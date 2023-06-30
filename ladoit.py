@@ -239,10 +239,10 @@ def laresetLP(alldata):
 
     cheatcoeff = alldata['cheatcoeff'] = 125
 
-    USELAZY = True
+    USELAZY = False
 
     if USELAZY == False:
-        boundvar = {}
+        #boundvar = {}
         ubval = cheatcoeff**.5
 
     for i in range(distcount):
@@ -262,7 +262,14 @@ def laresetLP(alldata):
         if USELAZY:
             newrow = therow - cheatcoeff*owner + partner*owner
             model.addConstr(newrow <= 0, name = Qconstr.QCName)
+        else:
+            for j in range(distsize[i]):
+                dvarij = distvarset[i][j]
 
+                model.addConstr(dvarij <= ubval*owner, name = 'vplus'+str(i)+','+str(j))
+                model.addConstr(dvarij >= -ubval*owner, name = 'vminus'+str(i)+','+str(j))                
+        
+        '''
         else:
             # first, add new variable
             boundvar[i] = model.addVar(obj = 0.0, lb = 0, ub = cheatcoeff, name = "up_" + str(i))
@@ -270,7 +277,7 @@ def laresetLP(alldata):
             model.addConstr(newrow <= 0, name = Qconstr.QCName)
 
             model.addConstr(boundvar[i] <= ubval*owner, name = 'vplus'+str(i))
-
+        '''
 
         #finally
 
@@ -295,11 +302,11 @@ def lasolveLP(alldata):
     
     model = alldata['model']
 
-    model.optimize()
-
     log.joint('Solving %s' % sys.argv[1])
     log.joint("variables = " + str(model.NumVars))
     log.joint("constraints = " + str(model.NumConstrs))
+
+    model.optimize()
 
     if model.status == GRB.status.INF_OR_UNBD:
         log.joint('->LP infeasible or unbounded')
@@ -310,11 +317,9 @@ def lasolveLP(alldata):
         model.computeIIS()
         model.write("model.ilp")
         sys.exit(0)
-
     elif model.status == GRB.status.UNBOUNDED:
         log.joint('->LP unbounded')                                             
         sys.exit(0)
-    
     elif model.status == GRB.OPTIMAL:
         log.joint(' ->OPTIMAL\n')
 
