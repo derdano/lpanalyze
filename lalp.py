@@ -88,7 +88,8 @@ def getlp(alldata):
     internal_pair_varindices1 = {}
 
     if LOUD:
-        log.joint('obj = '+ str(obj))    
+        log.joint('obj = '+ str(obj))
+        
     if isinstance(obj, QuadExpr):
         log.joint('\n->quadratic objective!\n')
         objisquad = True
