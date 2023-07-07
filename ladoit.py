@@ -188,19 +188,58 @@ def ladoit(alldata):
     tend = time.time()
 
     log.joint('Done analyzing in time %g\n'%(tend - tstart))
+
+    #hard-coded, boo
+    cheatcoeff = alldata['cheatcoeff'] = 125
+    alldata['maxcard'] = 25
+
     
+    #keep old model
+    alldata['originalmodel_relax'] = alldata['model'].relax()
+    alldata['originalmodel_relax'].write('foo.lp')
+    #simplebreak()
 
-    laresetLP(alldata)
 
-    lasolveLP(alldata)
+    alldata['keyorder'] = np.zeros(distcount, dtype = int)
+
+
+
+    
+    laresetLPtoSumOfSquares(alldata)
+
+    lasolveLP(alldata,'ss')
+
+    alldata['original_ss'] = alldata['model'].objval
+
+    doparametric = False
+
+    if doparametric:
+        laresetLPtoParametric(alldata, alldata['original_ss'])
+
+        code = {}
+        pushvalue = np.zeros(distcount)
+
+        for i in range(distcount):    #(2):
+            code[i], pushvalue[i] = lapushdownParametric(alldata, i)
+
+
+        #sort
+
+        log.joint('Sorted pushes:\n')
+        ind = np.argsort(pushvalue)
+        ordered = pushvalue[ind]
+        for k in range(distcount):
+            i = ind[k]
+            log.joint('k %d i %d value %g\n'%(k,i, pushvalue[i]))
+    
 
     return code
 
 
-def laresetLP(alldata):
+def laresetLPtoSumOfSquares(alldata):
     log = alldata['log']
 
-    log.joint('Now building new LP.\n')
+    log.joint('Now building new LP with sum-of-squares objective.\n')
 
     distcount = alldata['distcount']
     distsize = alldata['distsize']
@@ -225,7 +264,7 @@ def laresetLP(alldata):
         
     model.setObjective(distobj,GRB.MINIMIZE)
 
-    log.joint('Reset objective.\n')
+    log.joint('Reset objective to sum-of-squares.\n')
 
     #now update distance-defining constraints
 
@@ -237,7 +276,7 @@ def laresetLP(alldata):
     distvar_partner = alldata['distvar_partner']
     distconstr = alldata['distconstr']
 
-    cheatcoeff = alldata['cheatcoeff'] = 125
+
 
     USELAZY = False
 
@@ -283,17 +322,22 @@ def laresetLP(alldata):
 
         owner.vtype = GRB.CONTINUOUS
 
+    model.reset()
+    
     if USELAZY:
         model.write('lazy.lp')
     else:
         model.write('notlazy.lp')
-        simplebreak()
+        #simplebreak()
 
 
-def lasolveLP(alldata):
+def lasolveLP(alldata, header):
     log = alldata['log']
 
-    log.joint('Now solving reset LP.\n')
+    log.joint('Now solving LP. ')
+    if header:
+        log.joint('%s'%(header))
+    log.joint('.\n')
 
     distcount = alldata['distcount']
     distsize = alldata['distsize']
@@ -308,17 +352,20 @@ def lasolveLP(alldata):
 
     model.optimize()
 
+    code = 0
+
     if model.status == GRB.status.INF_OR_UNBD:
         log.joint('->LP infeasible or unbounded')
         model.Params.DualReductions = 0
         model.optimize()
     if model.status == GRB.status.INFEASIBLE:
-        log.joint('->LP infeasible')                                            
+        log.joint('->LP infeasible\n')                                            
         model.computeIIS()
         model.write("model.ilp")
-        sys.exit(0)
+        code = 1
+        return code, 1e10  #bad: hard-coded
     elif model.status == GRB.status.UNBOUNDED:
-        log.joint('->LP unbounded')                                             
+        log.joint('->LP unbounded\n')                                             
         sys.exit(0)
     elif model.status == GRB.OPTIMAL:
         log.joint(' ->OPTIMAL\n')
@@ -349,36 +396,160 @@ def lasolveLP(alldata):
             if abs(xvalue) > TOL:
                 setvalue2[i] += dvarij.x*dvarij.x
                 if LOUD:
+                    if header:
+                        log.joint('%s '%(header))
                     log.joint('Set %d, elt %d (%s) at value %g\n'%(i,j,dvarij.varname, dvarij.x))
 
         distvalue2 += setvalue2[i]
         numpositive += setvalue2[i] > TOL
-        log.joint('Set %d sum-of-squares %g; ub %g\n'%(i, setvalue2[i], cheatcoeff*owneri.x))
+        log.joint('Set %d sum-of-squares %g; constraint ub %g\n'%(i, setvalue2[i], cheatcoeff*owneri.x))
         #simplebreak()
-
+    if header:
+        log.joint('%s '%(header))
     log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
 
     ind = np.argsort(-setvalue2)
-
     ordered = setvalue2[ind]
-
     '''
     print(ordered)
     print(np.sum(ordered[75:]))
     '''
 
+
+    for k in range(distcount):
+        i = ind[k]
+        alldata['keyorder'][k] = i   
+    
+
     sumsmallest2 = 0
-    cardthresh = 75
+    cardthresh = distcount - alldata['maxcard']
     for k in range(cardthresh, distcount):
         i = ind[k]
         owneri = distvar_owner[i]
 
         sumsmallest2 += ordered[k]
 
+        if header:
+            log.joint('%s '%(header))
         log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
 
-
+    if header:
+        log.joint('%s '%(header))
     log.joint('Sum of %d smallest: %g\n'%(distcount - cardthresh, sumsmallest2))
-    log.joint('So overall lower bound: %g\n'%(model.objVal + sumsmallest2))
+    if header:
+        log.joint('%s '%(header))
+    log.joint('So overall lower bound: %g\n'%(distvalue2 + sumsmallest2))
+
+
+    return code, distvalue2 + sumsmallest2
         
 
+def laresetLPtoParametric(alldata, ss):
+    log = alldata['log']
+
+    log.joint('Now building parametric RHS LP using ss %g.\n'%(ss))
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    
+    model = alldata['model']
+
+    lambdavar = alldata['lambdavar'] = model.addVar(obj = 1.0, lb = 0, name = "lambda")
+
+    #set up new objective
+    lambdaobj = lambdavar
+        
+    model.setObjective(lambdaobj,GRB.MINIMIZE)
+
+    log.joint('Reset objective to lambda.\n')
+
+
+
+    #simplebreak()
+
+    LOUD = False
+
+    #now create parametric constraint
+
+    distvar_owner = alldata['distvar_owner'] 
+    distvar_partner = alldata['distvar_partner']
+    distconstr = alldata['distconstr']
+
+    cheatcoeff = alldata['cheatcoeff'] # not needed
+
+    USELAZY = False
+
+    if USELAZY == False:
+        #boundvar = {}
+        ubval = cheatcoeff**.5
+
+    lhs = 0        
+    for i in range(distcount):
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            lhs += dvarij*dvarij
+    
+    model.addConstr(lhs <= ss*lambdavar, name = 'lambda_up')
+
+    model.reset()
+
+    if USELAZY:
+        model.write('lambdalazy.lp')
+    else:
+        model.write('lambdanotlazy.lp')
+    simplebreak()
+
+
+
+def lapushdownParametric(alldata, keyi):
+    log = alldata['log']
+
+    log.joint('Now pushing down parametric RHS LP using keyi %d.\n'%(keyi))
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    
+    model = alldata['model']
+
+    LOUD = False
+
+    distvar_owner = alldata['distvar_owner'] 
+    distvar_partner = alldata['distvar_partner']
+    distconstr = alldata['distconstr']
+
+    USELAZY = False
+
+
+    ub = {}
+    lb = {}
+    for j in range(distsize[keyi]):
+            dvarij = distvarset[keyi][j]
+            ub[j] = dvarij.ub
+            lb[j] = dvarij.lb
+            dvarij.lb = dvarij.ub = 0
+    
+    model.reset()
+
+    if USELAZY:
+        model.write('lambdalazypush'+str(keyi)+'.lp')
+    else:
+        model.write('lambdanotlazypush'+str(keyi)+'.lp')
+
+
+    code, pushvalue = lasolveLP(alldata,'push'+str(keyi))
+
+    #restore
+
+    for j in range(distsize[keyi]):
+            dvarij = distvarset[keyi][j]
+            dvarij.ub = ub[j]
+            dvarij.lb = lb[j]
+
+    log.joint('key%d done with code %d val %g\n'%(keyi, code, pushvalue))
+    #simplebreak()
+
+    return code, pushvalue
+
+    
