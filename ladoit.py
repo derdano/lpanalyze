@@ -191,7 +191,7 @@ def ladoit(alldata):
 
     #hard-coded, boo
     cheatcoeff = alldata['cheatcoeff'] = 125
-    alldata['maxcard'] = 25
+    alldata['notmaxcard'] = 25
 
     
     #keep old model
@@ -206,8 +206,10 @@ def ladoit(alldata):
 
     
     laresetLPtoSumOfSquares(alldata)
+    simplebreak()
 
     lasolveLP(alldata,'ss')
+    simplebreak()
 
     alldata['original_ss'] = alldata['model'].objval
 
@@ -275,7 +277,7 @@ def laresetLPtoSumOfSquares(alldata):
     distvar_owner = alldata['distvar_owner'] 
     distvar_partner = alldata['distvar_partner']
     distconstr = alldata['distconstr']
-
+    cheatcoeff = alldata['cheatcoeff']
 
 
     USELAZY = False
@@ -402,7 +404,7 @@ def lasolveLP(alldata, header):
 
         distvalue2 += setvalue2[i]
         numpositive += setvalue2[i] > TOL
-        log.joint('Set %d sum-of-squares %g; constraint ub %g\n'%(i, setvalue2[i], cheatcoeff*owneri.x))
+        log.joint('Set %d sum-of-squares %g; binary owner value %g\n'%(i, setvalue2[i], owneri.x))
         #simplebreak()
     if header:
         log.joint('%s '%(header))
@@ -410,6 +412,7 @@ def lasolveLP(alldata, header):
 
     ind = np.argsort(-setvalue2)
     ordered = setvalue2[ind]
+    
     '''
     print(ordered)
     print(np.sum(ordered[75:]))
@@ -422,17 +425,23 @@ def lasolveLP(alldata, header):
     
 
     sumsmallest2 = 0
-    cardthresh = distcount - alldata['maxcard']
+    cardthresh = distcount - alldata['notmaxcard']
+
+    rhssum = 0
     for k in range(cardthresh, distcount):
         i = ind[k]
         owneri = distvar_owner[i]
 
         sumsmallest2 += ordered[k]
 
+        rhssum += owneri.x*(ordered[ind[cardthresh-1]] - ordered[k])
+
         if header:
             log.joint('%s '%(header))
         log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
+        
 
+    log.joint('rhssum: %g\n'%(rhssum))
     if header:
         log.joint('%s '%(header))
     log.joint('Sum of %d smallest: %g\n'%(distcount - cardthresh, sumsmallest2))
