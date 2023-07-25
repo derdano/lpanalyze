@@ -15,7 +15,7 @@ def simplebreak():
         sys.exit("bye")
 
 
-def ladoit(alldata):
+def foo(alldata):
     log = alldata['log']
 
     global MYDEBUG
@@ -56,15 +56,16 @@ def ladoit(alldata):
     code = 0
     varlindeg = alldata['varlindeg']
     varlindeg_bin = {}
-    distcount = 0  # number of distance sets
-    distname = {} # name of constraint for current distance set
+    seen = {}
+
+
+    distcount = 0  # number of distance sets    
     distvarset = {}   # variables in current distance set
     distsize = {}  # number of vars in current distance set
     distvar_owner = {}  # binary variable owner for current distance set
     distvar_partner = {}  # continuous variable multiplied times owner in current distance set
     distconstr = {} # distance constraint as we index it
 
-    seen = {}    
     for var in model.getVars():
         if var.vtype == GRB.BINARY:
             varlindeg_bin[var.varname] = 0
@@ -93,7 +94,6 @@ def ladoit(alldata):
 
         #simplebreak()
 
-        distname[distcount] = Qconstr.QCName        
         distconstr[distcount] = Qconstr
         distvarset[distcount] = []
 
@@ -139,7 +139,7 @@ def ladoit(alldata):
                     code = 1
                     simplebreak()                    
                     break
-            else: #v1 = v2, i.e., a square
+            else: #v1 = v2
                 distvarset[distcount].append(v1)
                 
                 if coeff != 1.0:
@@ -174,22 +174,6 @@ def ladoit(alldata):
 
         #simplebreak()
 
-    #direct check for disjointness, redundant
-    newseen = {}    
-    for var in model.getVars():
-        newseen[var.varname] = 0
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            dvarij = distvarset[i][j]
-            if newseen[dvarij.varname]:
-                log.joint('Disjointness test fails for set %d -> %s var index %d -> %s\n'%(i, distname[i], j, dvarij.varname))
-                code = 1
-                simplebreak()
-                break
-            newseen[dvarij.varname] = 1
-
-    log.joint('Disjointness test passed\n')
-
     log.joint('Final code: ' + str(code) + '.\n')
     log.joint('Quantsquares: %d, plus bilinears %d.  Total n = %d.\n'%(quantsquares, quantsquares + 2*(len(Qconstrs)), model.NumVars))
 
@@ -208,49 +192,47 @@ def ladoit(alldata):
     #hard-coded, boo
     cheatcoeff = alldata['cheatcoeff'] = 125
     alldata['notmaxcard'] = 25
-    alldata['posepsilon'] = 1e-6 # Threshold for declaring a variable positive
 
     
     #keep old model
-    #alldata['originalmodel_relax'] = alldata['model'].relax()
-    #alldata['originalmodel_relax'].write('foo.lp')
+    alldata['originalmodel_relax'] = alldata['model'].relax()
+    alldata['originalmodel_relax'].write('foo.lp')
     #simplebreak()
 
 
     alldata['keyorder'] = np.zeros(distcount, dtype = int)
 
 
+
     
     laresetLPtoSumOfSquares(alldata)
+    simplebreak()
 
     lasolveLP(alldata,'ss')
-    #simplebreak()
+    simplebreak()
 
     alldata['original_ss'] = alldata['model'].objval
 
-    #lahyper(alldata)
-
-    doparametric = True
+    doparametric = False
 
     if doparametric:
         laresetLPtoParametric(alldata, alldata['original_ss'])
 
         code = {}
         pushvalue = np.zeros(distcount)
-        ssvalue = np.zeros(distcount)
 
         for i in range(distcount):    #(2):
-            code[i], ssvalue[i], pushvalue[i] = lapushdownParametric(alldata, i)
-            #simplebreak()
-            
+            code[i], pushvalue[i] = lapushdownParametric(alldata, i)
+
+
         #sort
 
         log.joint('Sorted pushes:\n')
-        ind = np.argsort(ssvalue) #np.argsort(pushvalue)
+        ind = np.argsort(pushvalue)
         ordered = pushvalue[ind]
         for k in range(distcount):
             i = ind[k]
-            log.joint('k %d i %d value %g\n'%(k,i, ssvalue[i]))
+            log.joint('k %d i %d value %g\n'%(k,i, pushvalue[i]))
     
 
     return code
@@ -353,8 +335,10 @@ def laresetLPtoSumOfSquares(alldata):
 
 def lasolveLP(alldata, header):
     log = alldata['log']
+    # Initialize a list to store x^*
+    x_sol = [] 
 
-    log.joint('Now solving LP.\n')
+    log.joint('Now solving LP. ')
     if header:
         log.joint('%s'%(header))
     log.joint('.\n')
@@ -366,8 +350,9 @@ def lasolveLP(alldata, header):
     
     model = alldata['model']
 
-    log.joint("variables = " + str(model.NumVars) + "\n")
-    log.joint("constraints = " + str(model.NumConstrs) + "\n")
+    log.joint('Solving %s' % sys.argv[1])
+    log.joint("variables = " + str(model.NumVars))
+    log.joint("constraints = " + str(model.NumConstrs))
 
     model.optimize()
 
@@ -382,14 +367,14 @@ def lasolveLP(alldata, header):
         model.computeIIS()
         model.write("model.ilp")
         code = 1
-        return code, 1e10, 1e10  #bad: hard-coded
+        return code, 1e10  #bad: hard-coded
     elif model.status == GRB.status.UNBOUNDED:
         log.joint('->LP unbounded\n')                                             
         sys.exit(0)
     elif model.status == GRB.OPTIMAL:
         log.joint(' ->OPTIMAL\n')
 
-    log.joint('Optimal objective = %g\n' % model.objVal)
+    log.joint('Optimal objective = %g' % model.objVal)
 
     model.printQuality()
 
@@ -399,14 +384,39 @@ def lasolveLP(alldata, header):
     distvalue2 = 0
     setvalue2 = np.zeros(distcount)
 
-    xstar = alldata['xstar'] = {}
-
     numpositive = 0
     TOL = 1e-10
 
     LOUD = False
+
+    # new 
+    for i in range(distcount):
+        x_i = []
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            xvalue = dvarij.x
+
+            # if xvalue too small just append 0
+            if abs(xvalue) <= TOL: x_i.append(0)
+            if abs(xvalue) > TOL:
+                # new
+                x_i.append(xvalue)
+        # new
+        for j in range(len(x_i)):
+            log.joint('%g\n'%(x_i[j]))
+    log.joint('\n \n')
+
+    # new
+    log.joint('Minimize \n obj: \n  ')
+
     for i in range(distcount):
         owneri = distvar_owner[i]
+
+        # new
+        x_i = []
+        # varij_name = []
+        # for j in range(distsize[i]):
+        #     x_i.append(distvarset[i][j])
         #ub_sum += cheatcoeff*owneri.x
 
         
@@ -414,8 +424,18 @@ def lasolveLP(alldata, header):
         for j in range(distsize[i]):
             dvarij = distvarset[i][j]
             xvalue = dvarij.x
-            xstar[i,j] = xvalue
+
+            # new 
+            # varij_name.append(dvarij.varname)
+
+            # if xvalue too small just append 0
+            if abs(xvalue) <= TOL: x_i.append(0)
+
+
             if abs(xvalue) > TOL:
+                # new
+                x_i.append(xvalue)
+
                 setvalue2[i] += dvarij.x*dvarij.x
                 if LOUD:
                     if header:
@@ -424,11 +444,136 @@ def lasolveLP(alldata, header):
 
         distvalue2 += setvalue2[i]
         numpositive += setvalue2[i] > TOL
-        log.joint('Set %d size %d sum-of-squares %g; binary owner value %g\n'%(i, distsize[i], setvalue2[i], owneri.x))
+        # log.joint('Set %d sum-of-squares %g; binary owner value %g\n'%(i, setvalue2[i], owneri.x))
+
+        # new: objective
+        for j in range(len(x_i)):
+            # ind_j = j + i*12
+            if x_i[j] >= 0: 
+                # log.joint('( x%d - %g ) ^ 2 + '%(ind_j, x_i[j]))
+                # log.joint('[ x%d ^ 2 - %g x%d + %g ] + '%(ind_j, (2*x_i[j]), ind_j, (x_i[j])**2))
+                # log.joint('- %g x%d '%((2*x_i[j]), ind_j))
+                log.joint('- %g %s '%((2*x_i[j]), distvarset[i][j].varname))
+            if x_i[j] < 0: 
+                # log.joint('( x%d + %g ) ^ 2 + '%(ind_j, abs(x_i[j])))
+                # log.joint('[ x%d ^ 2 + %g x%d + %g ] + '%(ind_j, (2*abs(x_i[j])), ind_j, (x_i[j])**2))
+                # log.joint('+ %g x%d '%((2*abs(x_i[j])), ind_j))
+                log.joint('+ %g %s '%((2*abs(x_i[j])), distvarset[i][j].varname))
+        # log.joint('\n')
         #simplebreak()
-    if header:
-        log.joint('%s '%(header))
-    log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
+    # log.joint('\n') # new
+
+    log.joint('+ [ 2 %s ^ 2 '%(distvarset[0][0].varname))
+
+    for j in range(1, len(x_i)):
+            # ind_j = j + i*12
+            # log.joint('+ 2 x%d ^ 2 '%(ind_j))
+            log.joint('+ 2 %s ^ 2 '%(distvarset[0][j].varname))
+
+    for i in range(1, distcount):
+        x_i = []
+        # varij_name = []
+
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            xvalue = dvarij.x
+
+            # varij_name.append(dvarij.varname)
+
+            # if xvalue too small just append 0
+            if abs(xvalue) <= TOL: x_i.append(0)
+            if abs(xvalue) > TOL:
+                # new
+                x_i.append(xvalue)
+        # new
+        for j in range(len(x_i)):
+            # ind_j = j + i*12
+            # log.joint('+ 2 x%d ^ 2 '%(ind_j))
+            log.joint('+ 2 %s ^ 2 '%(distvarset[i][j].varname))
+    # log.joint('\n')
+
+    log.joint('] / 2 \n \n')
+    log.joint('Subject To \n  c0: ')
+
+    # new: constraints 
+
+    for i in range(distcount):
+        x_i = []
+        # varij_name = []
+
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            xvalue = dvarij.x
+
+            # if xvalue too small just append 0
+            if abs(xvalue) <= TOL: x_i.append(0)
+            if abs(xvalue) > TOL:
+                # new
+                x_i.append(xvalue)
+        # new
+        for j in range(len(x_i)):
+            # ind_j = j + i*12
+            if x_i[j] >= 0: 
+                # log.joint('+ %g * ( x%d - %g ) '%(x_i[j], ind_j, x_i[j]))
+                # log.joint('+ [ %g x%d - %g ] '%(x_i[j], ind_j, (x_i[j])**2))
+                # log.joint('+ %g x%d '%(x_i[j], ind_j))
+                log.joint('+ %g %s '%(x_i[j], distvarset[i][j].varname))
+            if x_i[j] < 0: 
+                # log.joint('- %g * ( x%d + %g ) '%(abs(x_i[j]), ind_j, abs(x_i[j])))
+                # log.joint('- [ %g x%d + %g ] '%(abs(x_i[j]), ind_j, (x_i[j])**2))
+                log.joint('- %g %s '%(abs(x_i[j]), distvarset[i][j].varname))
+    # log.joint('\n')
+
+    sum_of_constants = 0
+
+    for i in range(distcount):
+        x_i = []
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            xvalue = dvarij.x
+
+            # if xvalue too small just append 0
+            if abs(xvalue) <= TOL: x_i.append(0)
+            if abs(xvalue) > TOL:
+                # new
+                x_i.append(xvalue)
+        # new
+        for j in range(len(x_i)):
+            ind_j = j + i*12
+            sum_of_constants += - (x_i[j])**2
+    # log.joint('sum of constants is: %g '%(sum_of_constants))
+    # log.joint('\n')
+    log.joint('= %g \n'%(abs(sum_of_constants)))
+
+    for i in range(distcount):
+        for j in range(distsize[i]): 
+            ind_j = j + i*12
+            # log.joint('  c%d: -12 y%d - x%d <= 0 \n'%((2*ind_j+1), i, ind_j))
+            log.joint('  c%d: -12 b%d - %s <= 0 \n'%((2*ind_j+1), (i+102), distvarset[i][j].varname))
+
+            # log.joint('  c%d: x%d - 12 y%d <= 0 \n'%((2*ind_j+2), ind_j, i))
+            log.joint('  c%d: %s - 12 b%d <= 0 \n'%((2*ind_j+2), distvarset[i][j].varname, (i+102)))
+
+    log.joint('  c2401:')
+    for i in range(distcount-1):
+        log.joint(' b%d +'%(i+102))
+    log.joint(' b%d <= 75 '%(distcount-1+102))
+
+    log.joint('\n \nBounds \n')
+    for i in range(distcount): 
+        for j in range(distsize[i]): 
+            log.joint('  %s Free \n'%(distvarset[i][j].varname))
+
+    log.joint('\nBinary \n  ')
+
+    for i in range(distcount):
+        log.joint('b%d '%(i+102))
+    log.joint('\n \nEnd\n \n')
+
+    # if header:
+        # log.joint('%s '%(header))
+        # log.joint('')
+    # log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
 
     ind = np.argsort(-setvalue2)
     ordered = setvalue2[ind]
@@ -456,21 +601,21 @@ def lasolveLP(alldata, header):
 
         rhssum += owneri.x*(ordered[ind[cardthresh-1]] - ordered[k])
 
-        if header:
-            log.joint('%s '%(header))
-        log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
+        # if header:
+        #     log.joint('')
+        # log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
         
 
-    log.joint('rhssum: %g\n'%(rhssum))
-    if header:
-        log.joint('%s '%(header))
-    log.joint('Sum of %d smallest: %g\n'%(distcount - cardthresh, sumsmallest2))
-    if header:
-        log.joint('%s '%(header))
-    log.joint('So overall lower bound: %g\n'%(distvalue2 + sumsmallest2))
+    # log.joint('rhssum: %g\n'%(rhssum))
+    # if header:
+        # log.joint('%s '%(header))
+    # log.joint('Sum of %d smallest: %g\n'%(distcount - cardthresh, sumsmallest2))
+    # if header:
+        # log.joint('%s '%(header))
+    # log.joint('So overall lower bound: %g\n'%(distvalue2 + sumsmallest2))
 
 
-    return code, distvalue2, distvalue2 + sumsmallest2
+    return code, distvalue2 + sumsmallest2
         
 
 def laresetLPtoParametric(alldata, ss):
@@ -567,7 +712,7 @@ def lapushdownParametric(alldata, keyi):
         model.write('lambdanotlazypush'+str(keyi)+'.lp')
 
 
-    code, ssvalue, pushvalue = lasolveLP(alldata,'push'+str(keyi))
+    code, pushvalue = lasolveLP(alldata,'push'+str(keyi))
 
     #restore
 
@@ -576,106 +721,9 @@ def lapushdownParametric(alldata, keyi):
             dvarij.ub = ub[j]
             dvarij.lb = lb[j]
 
-    log.joint('key%d done with code %d ss %g val %g\n'%(keyi, code, ssvalue, pushvalue))
+    log.joint('key%d done with code %d val %g\n'%(keyi, code, pushvalue))
     #simplebreak()
 
-    return code, ssvalue, pushvalue
+    return code, pushvalue
 
     
-def lahyper(alldata):
-    log = alldata['log']
-    
-    log.joint('Now formulating hyperplane version. Pure squares version.\n')
-
-    hypermodel = Model("hyper")
-
-    distcount = alldata['distcount']
-    distsize = alldata['distsize']
-    distvarset = alldata['distvarset']
-    distvar_owner = alldata['distvar_owner']
-    xstar = alldata['xstar']
-    posepsilon = alldata['posepsilon']
-    
-    bvar = {}
-    for i in range(distcount):
-        owner = distvar_owner[i]        
-        bvar[i] = hypermodel.addVar(obj = 0.0, lb = 0, ub = 1, name = owner.varname, vtype = GRB.BINARY)
-        
-    xvar = {}
-    lambdaubound = lambdalbound = 0
-
-    incoming = 124.2**.5
-    log.joint('incoming upper bound on |x|: %g\n'%(incoming))
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            dvarij = distvarset[i][j]
-            lbval = max(dvarij.lb, -incoming)
-            ubval = min(dvarij.ub, incoming)
-            xvar[i,j] = hypermodel.addVar(obj = 0.0, lb = lbval, ub = ubval, name = dvarij.varname)
-            # To add the lambda variable we need to first compute its bounds.
-            # We need 2*x_j  = lambda * x^*_j
-            # Assuming x^*j > 0 we get 2*l_j/x^*_j <= lambda <= 2*u_j/x^*_j
-            # Assuming x^*j < 0 we get 2*u_j/x^*_j <= lambda <= 2*l_j/x^*_j
-            candubound = candlbound = 0
-            if xstar[i,j] > posepsilon:
-                candubound = 2*dvarij.ub/xstar[i,j]
-                candlbound = 2*dvarij.lb/xstar[i,j]
-            elif -xstar[i,j] > posepsilon:
-                candubound = 2*dvarij.lb/xstar[i,j]
-                candlbound = 2*dvarij.ub/xstar[i,j]
-            lambdaubound = max(lambdaubound, candubound)
-            lambdalbound = min(lambdalbound, candlbound)
-
-    log.joint('lambda variable has bounds [%g, %g]\n'%(lambdalbound, lambdaubound))
-
-    lambdavar = hypermodel.addVar(obj = 0.0, lb = lambdalbound, ub = lambdaubound, name = 'lambda')
-    simplebreak()
-
-    hypermodel.update()
-    
-    #let's start adding constraints.  First the hyperplane constraint.
-    expr = LinExpr()
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            expr += xstar[i,j]*xvar[i,j]
-    hypermodel.addConstr(expr == alldata['original_ss'], name = 'hyper')
-
-    #Now add the selection constraints.
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            hypermodel.addConstr(xvar[i,j] <= xvar[i,j].ub*bvar[i], name = 'vplus'+str(i)+','+str(j))
-            hypermodel.addConstr(xvar[i,j] >= xvar[i,j].lb*bvar[i], name = 'vminus'+str(i)+','+str(j))                
-
-    #Next, the cardinality constraint.
-    expr = LinExpr()
-    for i in range(distcount):
-        expr += bvar[i]
-    hypermodel.addConstr(expr <= distcount - alldata['notmaxcard'], name = 'maxcard')
-
-
-    #Next, the constraints involving lambda.
-    USELAMBDA = False
-    if USELAMBDA:
-        for i in range(distcount):
-            for j in range(distsize[i]):
-                Mj = max(0,lambdavar.ub*xstar[i,j], lambdavar.lb*xstar[i,j], -lambdavar.ub*xstar[i,j], -lambdavar.lb*xstar[i,j])
-                hypermodel.addConstr(2*xvar[i,j] - xstar[i,j]*lambdavar + Mj*bvar[i] <= Mj, name = 'ulambda_'+str(j))
-                hypermodel.addConstr(2*xvar[i,j] - xstar[i,j]*lambdavar - Mj*bvar[i] >= -Mj, name = 'dlambda_'+str(j))            
-
-    #Objective -- sum of squares
-    qexpr = QuadExpr()
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            qexpr += xvar[i,j]*xvar[i,j]
-
-    hypermodel.setObjective(qexpr, GRB.MINIMIZE)
-    if USELAMBDA:
-        hypermodel.write('hyperlambda.lp')
-    else:
-        hypermodel.write('hyper.lp')        
-    print('wrote model')
-
-
-    simplebreak()
-
-
