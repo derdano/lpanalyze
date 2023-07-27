@@ -233,7 +233,9 @@ def ladoit(alldata):
     doparametric = True
 
     if doparametric:
-        laresetLPtoParametric(alldata, alldata['original_ss'])
+
+        parametric_type = 'hyperplane_shift' #'squareDistance'
+        laresetLPtoParametric(alldata, alldata['original_ss'], parametric_type)
 
         code = {}
         pushvalue = np.zeros(distcount)
@@ -241,7 +243,7 @@ def ladoit(alldata):
 
         for i in range(distcount):    #(2):
             code[i], ssvalue[i], pushvalue[i] = lapushdownParametric(alldata, i)
-            #simplebreak()
+            simplebreak()
             
         #sort
 
@@ -429,13 +431,14 @@ def lasolveLP(alldata, header):
     if header:
         log.joint('%s '%(header))
     log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
+    simplebreak()
 
     ind = np.argsort(-setvalue2)
-    ordered = setvalue2[ind]
+    orderedss = setvalue2[ind]
     
     '''
-    print(ordered)
-    print(np.sum(ordered[75:]))
+    print(orderedss)
+    print(np.sum(orderedss[75:]))
     '''
 
 
@@ -452,13 +455,13 @@ def lasolveLP(alldata, header):
         i = ind[k]
         owneri = distvar_owner[i]
 
-        sumsmallest2 += ordered[k]
+        sumsmallest2 += orderedss[k]
 
-        rhssum += owneri.x*(ordered[ind[cardthresh-1]] - ordered[k])
+        rhssum += owneri.x*(orderedss[ind[cardthresh-1]] - orderedss[k])
 
         if header:
             log.joint('%s '%(header))
-        log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
+        log.joint('Ordered ss set %d is %d (%s = %g) with ss %g\n'%(k,i, owneri.varname, owneri.x, orderedss[k]))
         
 
     log.joint('rhssum: %g\n'%(rhssum))
@@ -473,10 +476,10 @@ def lasolveLP(alldata, header):
     return code, distvalue2, distvalue2 + sumsmallest2
         
 
-def laresetLPtoParametric(alldata, ss):
+def laresetLPtoParametric(alldata, ss, parametric_type):
     log = alldata['log']
 
-    log.joint('Now building parametric RHS LP using ss %g.\n'%(ss))
+    log.joint('Now building parametric RHS LP using ss %g and type %s.\n'%(ss, parametric_type))
 
     distcount = alldata['distcount']
     distsize = alldata['distsize']
@@ -492,7 +495,6 @@ def laresetLPtoParametric(alldata, ss):
     model.setObjective(lambdaobj,GRB.MINIMIZE)
 
     log.joint('Reset objective to lambda.\n')
-
 
 
     #simplebreak()
@@ -513,13 +515,23 @@ def laresetLPtoParametric(alldata, ss):
         #boundvar = {}
         ubval = cheatcoeff**.5
 
-    lhs = 0        
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            dvarij = distvarset[i][j]
-            lhs += dvarij*dvarij
-    
-    model.addConstr(lhs <= ss*lambdavar, name = 'lambda_up')
+    if parametric_type == 'squareDistance':
+        lhs = 0        
+        for i in range(distcount):
+            for j in range(distsize[i]):
+                dvarij = distvarset[i][j]
+                lhs += dvarij*dvarij
+            
+        model.addConstr(lhs <= ss*lambdavar, name = 'lambda_up')
+    elif parametric_type == 'hyperplane_shift':
+        xstar = alldata['xstar']
+        lhs = 0
+        for i in range(distcount):
+            for j in range(distsize[i]):
+                dvarij = distvarset[i][j]
+                lhs += xstar[i,j]*dvarij
+        model.addConstr(lhs <= lambdavar, name = 'lambda_up')
+        
 
     model.reset()
 
