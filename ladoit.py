@@ -223,8 +223,10 @@ def ladoit(alldata):
     
     laresetLPtoSumOfSquares(alldata)
 
-    lasolveLP(alldata,'ss')
-    #simplebreak()
+    #lasolveLP(alldata,'ss')
+
+    lasolveLP(alldata,'binaries')
+    simplebreak()
 
     alldata['original_ss'] = alldata['model'].objval
 
@@ -233,9 +235,7 @@ def ladoit(alldata):
     doparametric = True
 
     if doparametric:
-
-        parametric_type = 'hyperplane_shift' #'squareDistance'
-        laresetLPtoParametric(alldata, alldata['original_ss'], parametric_type)
+        laresetLPtoParametric(alldata, alldata['original_ss'])
 
         code = {}
         pushvalue = np.zeros(distcount)
@@ -243,7 +243,7 @@ def ladoit(alldata):
 
         for i in range(distcount):    #(2):
             code[i], ssvalue[i], pushvalue[i] = lapushdownParametric(alldata, i)
-            simplebreak()
+            #simplebreak()
             
         #sort
 
@@ -400,6 +400,7 @@ def lasolveLP(alldata, header):
     cheatcoeff = alldata['cheatcoeff']
     distvalue2 = 0
     setvalue2 = np.zeros(distcount)
+    binvalue = np.zeros(distcount)
 
     xstar = alldata['xstar'] = {}
 
@@ -411,7 +412,8 @@ def lasolveLP(alldata, header):
         owneri = distvar_owner[i]
         #ub_sum += cheatcoeff*owneri.x
 
-        
+
+        binvalue[i] = owneri.x
         setvalue2[i] = 0
         for j in range(distsize[i]):
             dvarij = distvarset[i][j]
@@ -431,14 +433,16 @@ def lasolveLP(alldata, header):
     if header:
         log.joint('%s '%(header))
     log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
-    simplebreak()
 
-    ind = np.argsort(-setvalue2)
-    orderedss = setvalue2[ind]
+    if header == 'ss':
+        ind = np.argsort(-setvalue2)
+    elif header == 'binaries':
+        ind = np.argsort(-binvalue)
+    ordered = setvalue2[ind]
     
     '''
-    print(orderedss)
-    print(np.sum(orderedss[75:]))
+    print(ordered)
+    print(np.sum(ordered[75:]))
     '''
 
 
@@ -447,39 +451,56 @@ def lasolveLP(alldata, header):
         alldata['keyorder'][k] = i   
     
 
-    sumsmallest2 = 0
-    cardthresh = distcount - alldata['notmaxcard']
+    if header == 'ss':
+        sumsmallest2 = 0
+        cardthresh = distcount - alldata['notmaxcard']
 
-    rhssum = 0
-    for k in range(cardthresh, distcount):
-        i = ind[k]
-        owneri = distvar_owner[i]
+        rhssum = 0
+        for k in range(cardthresh, distcount):
+            i = ind[k]
+            owneri = distvar_owner[i]
 
-        sumsmallest2 += orderedss[k]
+            sumsmallest2 += ordered[k]
 
-        rhssum += owneri.x*(orderedss[ind[cardthresh-1]] - orderedss[k])
+            rhssum += owneri.x*(ordered[ind[cardthresh-1]] - ordered[k])
 
-        if header:
+            if header:
+                log.joint('%s '%(header))
+                log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
+            
+
+            log.joint('rhssum: %g\n'%(rhssum))
+            if header:
+                log.joint('%s '%(header))
+                log.joint('Sum of %d smallest: %g\n'%(distcount - cardthresh, sumsmallest2))
             log.joint('%s '%(header))
-        log.joint('Ordered ss set %d is %d (%s = %g) with ss %g\n'%(k,i, owneri.varname, owneri.x, orderedss[k]))
-        
+            log.joint('So overall lower bound: %g\n'%(distvalue2 + sumsmallest2))
+    elif header == 'binaries':
+        sum = 0
+        for k in range(distcount - alldata['notmaxcard'], distcount):
+            i = ind[k]
+            owneri = distvar_owner[i]
 
-    log.joint('rhssum: %g\n'%(rhssum))
-    if header:
-        log.joint('%s '%(header))
-    log.joint('Sum of %d smallest: %g\n'%(distcount - cardthresh, sumsmallest2))
-    if header:
-        log.joint('%s '%(header))
-    log.joint('So overall lower bound: %g\n'%(distvalue2 + sumsmallest2))
+            sum += owneri.x
+            log.joint('%s '%(header))
+            log.joint('Ordered set %d is %d (%s) binary at %g; sum %.3e\n'%(k,i, owneri.varname, owneri.x,sum))
 
+        for k in range(distcount - alldata['notmaxcard'], distcount):
+            i = ind[k]
+            owneri = distvar_owner[i]
+
+            print(owneri.varname + ' + ')
+            
+
+    simplebreak()
 
     return code, distvalue2, distvalue2 + sumsmallest2
         
 
-def laresetLPtoParametric(alldata, ss, parametric_type):
+def laresetLPtoParametric(alldata, ss):
     log = alldata['log']
 
-    log.joint('Now building parametric RHS LP using ss %g and type %s.\n'%(ss, parametric_type))
+    log.joint('Now building parametric RHS LP using ss %g.\n'%(ss))
 
     distcount = alldata['distcount']
     distsize = alldata['distsize']
@@ -495,6 +516,7 @@ def laresetLPtoParametric(alldata, ss, parametric_type):
     model.setObjective(lambdaobj,GRB.MINIMIZE)
 
     log.joint('Reset objective to lambda.\n')
+
 
 
     #simplebreak()
@@ -515,23 +537,13 @@ def laresetLPtoParametric(alldata, ss, parametric_type):
         #boundvar = {}
         ubval = cheatcoeff**.5
 
-    if parametric_type == 'squareDistance':
-        lhs = 0        
-        for i in range(distcount):
-            for j in range(distsize[i]):
-                dvarij = distvarset[i][j]
-                lhs += dvarij*dvarij
-            
-        model.addConstr(lhs <= ss*lambdavar, name = 'lambda_up')
-    elif parametric_type == 'hyperplane_shift':
-        xstar = alldata['xstar']
-        lhs = 0
-        for i in range(distcount):
-            for j in range(distsize[i]):
-                dvarij = distvarset[i][j]
-                lhs += xstar[i,j]*dvarij
-        model.addConstr(lhs <= lambdavar, name = 'lambda_up')
-        
+    lhs = 0        
+    for i in range(distcount):
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            lhs += dvarij*dvarij
+    
+    model.addConstr(lhs <= ss*lambdavar, name = 'lambda_up')
 
     model.reset()
 
