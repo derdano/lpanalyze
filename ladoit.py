@@ -218,8 +218,6 @@ def ladoit(alldata):
 
 
     alldata['keyorder'] = np.zeros(distcount, dtype = int)
-
-
     
     laresetLPtoSumOfSquares(alldata)
 
@@ -428,17 +426,17 @@ def lasolveLP(alldata, header):
 
         distvalue2 += setvalue2[i]
         numpositive += setvalue2[i] > TOL
-        log.joint('Set %d size %d sum-of-squares %g; binary owner value %g\n'%(i, distsize[i], setvalue2[i], owneri.x))
+        #log.joint('Set %d size %d sum-of-squares %g; binary owner value %g\n'%(i, distsize[i], setvalue2[i], owneri.x))
         #simplebreak()
     if header:
-        log.joint('%s '%(header))
+        log.joint('Header %s '%(header))
     log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
 
     if header == 'ss':
         ind = np.argsort(-setvalue2)
+        ordered = setvalue2[ind]
     elif header == 'binaries':
         ind = np.argsort(-binvalue)
-    ordered = setvalue2[ind]
     
     '''
     print(ordered)
@@ -446,12 +444,12 @@ def lasolveLP(alldata, header):
     '''
 
 
-    for k in range(distcount):
-        i = ind[k]
-        alldata['keyorder'][k] = i   
-    
+    sumsmallest2 = 0
 
     if header == 'ss':
+        for k in range(distcount):
+            i = ind[k]
+            alldata['keyorder'][k] = i   
         sumsmallest2 = 0
         cardthresh = distcount - alldata['notmaxcard']
 
@@ -465,7 +463,7 @@ def lasolveLP(alldata, header):
             rhssum += owneri.x*(ordered[ind[cardthresh-1]] - ordered[k])
 
             if header:
-                log.joint('%s '%(header))
+                log.joint('Header %s '%(header))
                 log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
             
 
@@ -476,6 +474,7 @@ def lasolveLP(alldata, header):
             log.joint('%s '%(header))
             log.joint('So overall lower bound: %g\n'%(distvalue2 + sumsmallest2))
     elif header == 'binaries':
+        sumsmallest2 = 0        
         sum = 0
         for k in range(distcount - alldata['notmaxcard'], distcount):
             i = ind[k]
@@ -492,7 +491,7 @@ def lasolveLP(alldata, header):
             print(owneri.varname + ' + ')
             
 
-    simplebreak()
+    #simplebreak()
 
     return code, distvalue2, distvalue2 + sumsmallest2
         
