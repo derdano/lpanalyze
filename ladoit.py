@@ -205,9 +205,9 @@ def ladoit(alldata):
 
     log.joint('Done analyzing in time %g\n'%(tend - tstart))
 
-    #hard-coded, boo
-    cheatcoeff = alldata['cheatcoeff'] = 125
-    alldata['notmaxcard'] = 25
+    cheatcoeff = alldata['cheatcoeff'] = alldata['UB']
+    alldata['notmaxcard'] = distcount - alldata['MAXCARD']
+    log.joint("******** notmaxcard is %d\n"%(alldata['notmaxcard']))
     alldata['posepsilon'] = 1e-6 # Threshold for declaring a variable positive
 
     
@@ -216,9 +216,51 @@ def ladoit(alldata):
     #alldata['originalmodel_relax'].write('foo.lp')
     #simplebreak()
 
-
     alldata['keyorder'] = np.zeros(distcount, dtype = int)
+
+    if alldata['VERSION'] == 'Perspective':
+        laPerspective(alldata)
+    elif alldata['VERSION'] == 'SumOfSquares':
+        laSumOfSquares(alldata)
     
+    return code
+
+def laPerspective(alldata):
+    log = alldata['log']    
+    log.joint('Running Perspective\n')
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    distvar_owner = alldata['distvar_owner'] 
+    distvar_partner = alldata['distvar_partner']
+    distconstr = alldata['distconstr']
+    cheatcoeff = alldata['cheatcoeff']
+    
+    model = alldata['model']
+
+    
+    for i in range(distcount):
+        Qconstr = distconstr[i]
+        owner = distvar_owner[i]
+        partner = distvar_partner[i]
+        therow = model.getQCRow(Qconstr)
+
+        #finally
+
+        owner.vtype = GRB.CONTINUOUS
+
+    model.reset()
+
+    model.write('perspective.lp')
+
+    lasolveLP(alldata, 'perspective')
+    
+    simplebreak()
+    
+def laSumOfSquares(alldata):
+    log = alldata['log']
+    log.joint('Running sum-of-squares\n')
     laresetLPtoSumOfSquares(alldata)
 
     #lasolveLP(alldata,'ss')
@@ -228,7 +270,7 @@ def ladoit(alldata):
 
     alldata['original_ss'] = alldata['model'].objval
 
-    #lahyper(alldata)
+    lahyper(alldata)
 
     doparametric = True
 
@@ -250,11 +292,20 @@ def ladoit(alldata):
         ordered = pushvalue[ind]
         for k in range(distcount):
             i = ind[k]
-            log.joint('k %d i %d value %g\n'%(k,i, ssvalue[i]))
-    
+            owneri = distvar_owner[i]            
+            log.joint('k %d i %d name %s value %g\n'%(k,i, owneri.varname, ssvalue[i]))
 
+        count = 0
+        for k in range( alldata['notmaxcard'] ):
+            i = ind[k]
+            owneri = distvar_owner[i]
+            count += 1
+            log.joint('%s + '%(owneri.varname))
+            if count == 5:
+                log.joint('\n')
+                count = 0
+        log.joint('\n')
     return code
-
 
 def laresetLPtoSumOfSquares(alldata):
     log = alldata['log']
@@ -348,7 +399,7 @@ def laresetLPtoSumOfSquares(alldata):
         model.write('lazy.lp')
     else:
         model.write('notlazy.lp')
-        #simplebreak()
+    simplebreak()
 
 
 def lasolveLP(alldata, header):
@@ -437,7 +488,8 @@ def lasolveLP(alldata, header):
         ordered = setvalue2[ind]
     elif header == 'binaries':
         ind = np.argsort(-binvalue)
-    
+    elif header == 'perspective':
+        ind = np.argsort(-binvalue)
     '''
     print(ordered)
     print(np.sum(ordered[75:]))
@@ -476,7 +528,26 @@ def lasolveLP(alldata, header):
     elif header == 'binaries':
         sumsmallest2 = 0        
         sum = 0
+        #for k in range(distcount - alldata['notmaxcard'], distcount):
+        for k in range(distcount):
+            i = ind[k]
+            owneri = distvar_owner[i]
+
+            sum += owneri.x
+            log.joint('%s '%(header))
+            log.joint('Ordered set %d is %d (%s) binary at %g; sum %.3e\n'%(k,i, owneri.varname, owneri.x,sum))
+
         for k in range(distcount - alldata['notmaxcard'], distcount):
+            i = ind[k]
+            owneri = distvar_owner[i]
+
+            print(owneri.varname + ' + ')
+
+    elif header == 'perspective':
+        sumsmallest2 = 0        
+        sum = 0
+        #for k in range(distcount - alldata['notmaxcard'], distcount):
+        for k in range(distcount):
             i = ind[k]
             owneri = distvar_owner[i]
 
@@ -627,7 +698,7 @@ def lahyper(alldata):
     xvar = {}
     lambdaubound = lambdalbound = 0
 
-    incoming = 124.2**.5
+    incoming = 10.0
     log.joint('incoming upper bound on |x|: %g\n'%(incoming))
     for i in range(distcount):
         for j in range(distsize[i]):
@@ -693,12 +764,111 @@ def lahyper(alldata):
 
     hypermodel.setObjective(qexpr, GRB.MINIMIZE)
     if USELAMBDA:
-        hypermodel.write('hyperlambda.lp')
+        filename = 'hyperlambda.lp'
     else:
-        hypermodel.write('hyper.lp')        
-    print('wrote model')
+        filename = 'hyper.lp'
+    hypermodel.write(filename)        
+    log.joint('Wrote model to %s\n'%filename)
 
 
     simplebreak()
 
+
+def laPerspectiveHyper(alldata):
+    log = alldata['log']
+    
+    log.joint('Now formulating hyperplane version. Perspective version.\n')
+
+    hyperPerspModel = Model("hyperpersp")
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    distvar_owner = alldata['distvar_owner']
+    xstar = alldata['xstar']
+    posepsilon = alldata['posepsilon']
+    
+    bvar = {}
+    for i in range(distcount):
+        owner = distvar_owner[i]        
+        bvar[i] = hyperPerspModel.addVar(obj = 0.0, lb = 0, ub = 1, name = owner.varname, vtype = GRB.BINARY)
+        
+    xvar = {}
+    lambdaubound = lambdalbound = 0
+
+    incoming = 10.0
+    log.joint('incoming upper bound on |x|: %g\n'%(incoming))
+    for i in range(distcount):
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            lbval = max(dvarij.lb, -incoming)
+            ubval = min(dvarij.ub, incoming)
+            xvar[i,j] = hyperPerspModel.addVar(obj = 0.0, lb = lbval, ub = ubval, name = dvarij.varname)
+            # To add the lambda variable we need to first compute its bounds.
+            # We need 2*x_j  = lambda * x^*_j
+            # Assuming x^*j > 0 we get 2*l_j/x^*_j <= lambda <= 2*u_j/x^*_j
+            # Assuming x^*j < 0 we get 2*u_j/x^*_j <= lambda <= 2*l_j/x^*_j
+            candubound = candlbound = 0
+            if xstar[i,j] > posepsilon:
+                candubound = 2*dvarij.ub/xstar[i,j]
+                candlbound = 2*dvarij.lb/xstar[i,j]
+            elif -xstar[i,j] > posepsilon:
+                candubound = 2*dvarij.lb/xstar[i,j]
+                candlbound = 2*dvarij.ub/xstar[i,j]
+            lambdaubound = max(lambdaubound, candubound)
+            lambdalbound = min(lambdalbound, candlbound)
+
+    log.joint('lambda variable has bounds [%g, %g]\n'%(lambdalbound, lambdaubound))
+
+    lambdavar = hyperPerspModel.addVar(obj = 0.0, lb = lambdalbound, ub = lambdaubound, name = 'lambda')
+    simplebreak()
+
+    hyperPerspModel.update()
+    
+    #let's start adding constraints.  First the hyperplane constraint.
+    expr = LinExpr()
+    for i in range(distcount):
+        for j in range(distsize[i]):
+            expr += xstar[i,j]*xvar[i,j]
+    hyperPerspModel.addConstr(expr == alldata['original_ss'], name = 'hyper')
+
+    #Now add the selection constraints.
+    for i in range(distcount):
+        for j in range(distsize[i]):
+            hyperPerspModel.addConstr(xvar[i,j] <= xvar[i,j].ub*bvar[i], name = 'vplus'+str(i)+','+str(j))
+            hyperPerspModel.addConstr(xvar[i,j] >= xvar[i,j].lb*bvar[i], name = 'vminus'+str(i)+','+str(j))                
+
+    #Next, the cardinality constraint.
+    expr = LinExpr()
+    for i in range(distcount):
+        expr += bvar[i]
+    hyperPerspModel.addConstr(expr <= distcount - alldata['notmaxcard'], name = 'maxcard')
+
+
+    #Next, the constraints involving lambda.
+    USELAMBDA = False
+    if USELAMBDA:
+        for i in range(distcount):
+            for j in range(distsize[i]):
+                Mj = max(0,lambdavar.ub*xstar[i,j], lambdavar.lb*xstar[i,j], -lambdavar.ub*xstar[i,j], -lambdavar.lb*xstar[i,j])
+                hyperPerspModel.addConstr(2*xvar[i,j] - xstar[i,j]*lambdavar + Mj*bvar[i] <= Mj, name = 'ulambda_'+str(j))
+                hyperPerspModel.addConstr(2*xvar[i,j] - xstar[i,j]*lambdavar - Mj*bvar[i] >= -Mj, name = 'dlambda_'+str(j))            
+
+    #Objective -- sum of squares
+    qexpr = QuadExpr()
+    for i in range(distcount):
+        for j in range(distsize[i]):
+            qexpr += xvar[i,j]*xvar[i,j]
+
+    hyperPerspModel.setObjective(qexpr, GRB.MINIMIZE)
+    if USELAMBDA:
+        filename = 'hyperlambda.lp'
+    else:
+        filename = 'hyper.lp'
+    hyperPerspModel.write(filename)        
+    log.joint('Wrote model to %s\n'%filename)
+
+
+    simplebreak()
+    
 

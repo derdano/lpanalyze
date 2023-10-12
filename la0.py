@@ -29,6 +29,10 @@ def read_config(log, filename):
     lpfile = 'NONE'
     linenum = 0
 
+    MAXCARD = 75
+    UB = 125
+    VERSION = 'SumOfSquares'
+
     while linenum < len(lines):
      thisline = lines[linenum].split()
 
@@ -36,6 +40,12 @@ def read_config(log, filename):
        word = thisline[0]
        if thisline[0] == 'LPFILE':
          lpfile = thisline[1]
+       elif thisline[0] == 'MAXCARD':
+         maxcard = int(thisline[1])
+       elif thisline[0] == 'UB':
+         UB = float(thisline[1])
+       elif thisline[0] == 'VERSION':
+         VERSION = thisline[1]
        elif thisline[0] == 'END':
          break
        else:
@@ -43,7 +53,7 @@ def read_config(log, filename):
 
      linenum += 1
 
-    for x in [('LPFILE',lpfile)]:
+    for x in [('LPFILE',lpfile), ('MAXCARD',MAXCARD), ('UB', UB), ('VERSION',VERSION)]:
       if x[1] == 'NONE':
         log.stateandquit(' no ' + x[0] + ' input'+'\n')
       alldata[x[0]] = x[1]
