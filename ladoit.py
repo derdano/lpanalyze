@@ -15,7 +15,7 @@ def simplebreak():
         sys.exit("bye")
 
 
-def ladoit(alldata):
+def lascan(alldata):
     log = alldata['log']
 
     global MYDEBUG
@@ -26,7 +26,12 @@ def ladoit(alldata):
     log.joint('\nAnalyzing %s.\n' % alldata['LPFILE'])
 
     model = alldata['model']
+    lpname = alldata['LPFILE']
 
+    # Make a copy of the model
+    model.update() # Update model before copying 
+    copy = model.copy()
+    alldata['copy'] = copy
     
     log.joint("Q constraints = " + str(model.NumQConstrs)+'.\n')    
     Qconstrs = model.getQConstrs()
@@ -51,11 +56,10 @@ def ladoit(alldata):
 
     log.joint('First test passed.\n')
 
- 
-
     code = 0
     varlindeg = alldata['varlindeg']
     varlindeg_bin = {}
+    vartype_mine = {}
     distcount = 0  # number of distance sets
     distname = {} # name of constraint for current distance set
     distvarset = {}   # variables in current distance set
@@ -66,8 +70,11 @@ def ladoit(alldata):
 
     seen = {}    
     for var in model.getVars():
-        if var.vtype == GRB.BINARY:
+        if var.vtype == GRB.BINARY or var.vtype == GRB.INTEGER:
             varlindeg_bin[var.varname] = 0
+            vartype_mine[var.varname] = 'int'
+        else:
+            vartype_mine[var.varname] = 'cont'
         seen[var.varname] = 0
     
 
@@ -102,8 +109,10 @@ def ladoit(alldata):
             v1 = therow.getVar1(j)
             v2 = therow.getVar2(j)
 
-
             #print('>>>','v1',v1.varname,'v2',v2.varname)
+            #print(' vld1', v1.varname, varlindeg[v1.varname])
+            #print(' v2type', v2.varname, vartype_mine[v2.varname])
+            
             coeff = therow.getCoeff(j)
             if v1.varname != v2.varname:
                 if numbilin > 0:
@@ -117,15 +126,16 @@ def ladoit(alldata):
                     log.joint(Qconstr.QCName+ ' fails coeff.\n')                
                     code = 1
                     break
-                if varlindeg[v1.varname] ==0 and v1.vtype != GRB.BINARY and v2.vtype == GRB.BINARY and varlindeg_bin[v2.varname]==0:
+                if varlindeg[v1.varname] ==0 and vartype_mine[v1.varname] != 'int' and vartype_mine[v2.varname] == 'int' and varlindeg_bin[v2.varname]==0:
                     # good case
                     varlindeg[v1.varname] = 1
                     varlindeg_bin[v2.varname] = 1
 
                     distvar_owner[distcount] = v2
                     distvar_partner[distcount] = v1
+                    print('hello!')
                     
-                elif varlindeg_bin[v1.varname] == 0 and v1.vtype == GRB.BINARY and varlindeg[v2.varname]== 0 and v2.vtype != GRB.BINARY:
+                elif vartype_mine[v1.varname] == 'int' and varlindeg_bin[v1.varname] and varlindeg[v2.varname]== 0 and vartype_mine[v2.varname] != 'int':
                     # reverse good case
                     varlindeg_bin[v1.varname] = 1
                     varlindeg[v2.varname] = 1
@@ -190,6 +200,14 @@ def ladoit(alldata):
 
     log.joint('Disjointness test passed\n')
 
+    constrs = model.getConstrs()
+
+    numOfLinConstrs = len(constrs)
+    alldata['numOfLinConstrs'] = numOfLinConstrs
+
+
+    LOUD = False # Resetting LOUD to False 
+
     log.joint('Final code: ' + str(code) + '.\n')
     log.joint('Quantsquares: %d, plus bilinears %d.  Total n = %d.\n'%(quantsquares, quantsquares + 2*(len(Qconstrs)), model.NumVars))
 
@@ -205,6 +223,20 @@ def ladoit(alldata):
 
     log.joint('Done analyzing in time %g\n'%(tend - tstart))
 
+
+    return code
+
+def ladoit(alldata):
+    log = alldata['log']    
+    log.joint('Now running algorithms.\n')
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    distvar_owner = alldata['distvar_owner'] 
+    distvar_partner = alldata['distvar_partner']
+    distconstr = alldata['distconstr']
+    
     cheatcoeff = alldata['cheatcoeff'] = alldata['UB']
     alldata['notmaxcard'] = distcount - alldata['MAXCARD']
     log.joint("******** notmaxcard is %d\n"%(alldata['notmaxcard']))
@@ -223,7 +255,6 @@ def ladoit(alldata):
     elif alldata['VERSION'] == 'SumOfSquares':
         laSumOfSquares(alldata)
     
-    return code
 
 def laPerspective(alldata):
     log = alldata['log']    
@@ -239,7 +270,17 @@ def laPerspective(alldata):
     
     model = alldata['model']
 
+    constrs = model.getConstrs()
+    isallbinary = alldata['isallbinary']
     
+    LOUD = False 
+    i = 0
+    for constr in constrs:    
+        if LOUD:
+            log.joint(constr.ConstrName + ' ' + constr.Sense + ' ' + str(constr.RHS) + ' yes or no allbinary ' + str(isallbinary[i]) + '\n')
+        i += 1
+    #breakexit('binary')
+
     for i in range(distcount):
         Qconstr = distconstr[i]
         owner = distvar_owner[i]
@@ -255,24 +296,55 @@ def laPerspective(alldata):
     model.write('perspective.lp')
 
     lasolveLP(alldata, 'perspective')
-    
+    # breakexit('after solve LP within laPerspective')
     simplebreak()
+
+    alldata['original_pers'] = alldata['model'].objval
+
+    #laSShyper(alldata)
+
+    laPerspectiveHyper(alldata)
     
 def laSumOfSquares(alldata):
     log = alldata['log']
     log.joint('Running sum-of-squares\n')
+
     laresetLPtoSumOfSquares(alldata)
 
     #lasolveLP(alldata,'ss')
 
     lasolveLP(alldata,'binaries')
-    simplebreak()
+    #simplebreak()
 
     alldata['original_ss'] = alldata['model'].objval
+    isallbinary = alldata['isallbinary']
+    numOfLinConstrs = alldata['numOfLinConstrs']
+    copy = alldata['copy']
 
-    lahyper(alldata)
+    '''
+    Since the model has been modified, 
+    we need the copy of the original model. 
+    '''
+    '''
+    #Discarded code
+    constrs = model.getConstrs()
+    i = 0
+    for constr in constrs: 
+        if i >= numOfLinConstrs:
+            np.append(isallbinary, 0)
+            print("Last position of isallbinary is: " + str(isallbinary[i]) + "\n")
+        i += 1
 
-    doparametric = True
+    alldata['isallbinary'] = isallbinary 
+    '''
+
+    breakexit('beforelaSShyper')
+    laSShyper(alldata)
+
+    '''
+    Not doing parametric for now. Will come back to fix if needed. 
+    '''
+    doparametric = False 
 
     if doparametric:
         laresetLPtoParametric(alldata, alldata['original_ss'])
@@ -305,7 +377,7 @@ def laSumOfSquares(alldata):
                 log.joint('\n')
                 count = 0
         log.joint('\n')
-    return code
+    # return code # Comment out for now. 
 
 def laresetLPtoSumOfSquares(alldata):
     log = alldata['log']
@@ -396,9 +468,13 @@ def laresetLPtoSumOfSquares(alldata):
     model.reset()
     
     if USELAZY:
-        model.write('lazy.lp')
+        ssfilename = 'lazy.lp'
+
     else:
-        model.write('notlazy.lp')
+        ssfilename = 'notlazy.lp'        
+
+    model.write(ssfilename)
+    log.joint('Wrote SS LP to %s\n'%(ssfilename))
     simplebreak()
 
 
@@ -449,8 +525,9 @@ def lasolveLP(alldata, header):
     cheatcoeff = alldata['cheatcoeff']
     distvalue2 = 0
     setvalue2 = np.zeros(distcount)
-    binvalue = np.zeros(distcount)
+    # binvalue = np.zeros(distcount)
 
+    binvalue = alldata['binvalue'] = np.zeros(distcount)
     xstar = alldata['xstar'] = {}
 
     numpositive = 0
@@ -480,7 +557,7 @@ def lasolveLP(alldata, header):
         #log.joint('Set %d size %d sum-of-squares %g; binary owner value %g\n'%(i, distsize[i], setvalue2[i], owneri.x))
         #simplebreak()
     if header:
-        log.joint('Header %s '%(header))
+        log.joint('(Header) %s '%(header))
     log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
 
     if header == 'ss':
@@ -515,7 +592,7 @@ def lasolveLP(alldata, header):
             rhssum += owneri.x*(ordered[ind[cardthresh-1]] - ordered[k])
 
             if header:
-                log.joint('Header %s '%(header))
+                log.joint('(Header) %s '%(header))
                 log.joint('Ordered set %d is %d (%s, %g) at %g\n'%(k,i, owneri.varname, owneri.x, ordered[k]))
             
 
@@ -537,12 +614,14 @@ def lasolveLP(alldata, header):
             log.joint('%s '%(header))
             log.joint('Ordered set %d is %d (%s) binary at %g; sum %.3e\n'%(k,i, owneri.varname, owneri.x,sum))
 
+        '''
         for k in range(distcount - alldata['notmaxcard'], distcount):
             i = ind[k]
             owneri = distvar_owner[i]
 
             print(owneri.varname + ' + ')
-
+        '''
+        
     elif header == 'perspective':
         sumsmallest2 = 0        
         sum = 0
@@ -555,13 +634,14 @@ def lasolveLP(alldata, header):
             log.joint('%s '%(header))
             log.joint('Ordered set %d is %d (%s) binary at %g; sum %.3e\n'%(k,i, owneri.varname, owneri.x,sum))
 
+        '''
         for k in range(distcount - alldata['notmaxcard'], distcount):
             i = ind[k]
             owneri = distvar_owner[i]
 
             print(owneri.varname + ' + ')
+        '''
             
-
     #simplebreak()
 
     return code, distvalue2, distvalue2 + sumsmallest2
@@ -676,8 +756,9 @@ def lapushdownParametric(alldata, keyi):
     return code, ssvalue, pushvalue
 
     
-def lahyper(alldata):
+def laSShyper(alldata):
     log = alldata['log']
+    lpname = alldata['LPFILE']
     
     log.joint('Now formulating hyperplane version. Pure squares version.\n')
 
@@ -689,6 +770,9 @@ def lahyper(alldata):
     distvar_owner = alldata['distvar_owner']
     xstar = alldata['xstar']
     posepsilon = alldata['posepsilon']
+    model = alldata['copy']
+    isallbinary = alldata['isallbinary']
+    UB = alldata['UB']
     
     bvar = {}
     for i in range(distcount):
@@ -698,7 +782,7 @@ def lahyper(alldata):
     xvar = {}
     lambdaubound = lambdalbound = 0
 
-    incoming = 10.0
+    incoming = UB**0.5 # This was previously hard-coded. I changed it. 
     log.joint('incoming upper bound on |x|: %g\n'%(incoming))
     for i in range(distcount):
         for j in range(distsize[i]):
@@ -740,11 +824,48 @@ def lahyper(alldata):
             hypermodel.addConstr(xvar[i,j] <= xvar[i,j].ub*bvar[i], name = 'vplus'+str(i)+','+str(j))
             hypermodel.addConstr(xvar[i,j] >= xvar[i,j].lb*bvar[i], name = 'vminus'+str(i)+','+str(j))                
 
+    '''
+    I decided to add all pure integer constraints here. 
+    The cardinality constraint is a isallbinary constraint and will be added in the loop. 
+
+    Old code: 
     #Next, the cardinality constraint.
     expr = LinExpr()
     for i in range(distcount):
         expr += bvar[i]
     hypermodel.addConstr(expr <= distcount - alldata['notmaxcard'], name = 'maxcard')
+    '''
+
+    #Now add the isallbinary constraints. Those constraints are linear. 
+    constrs = model.getConstrs()
+    i = 0
+    for constr in constrs:
+        log.joint("Name of constr is: " + constr.ConstrName + "\n")
+        log.joint("At index " + str(i) + " isallbinary is " + str(isallbinary[i]) + "\n")
+        if isallbinary[i] == 1: 
+            lhs = model.getRow(constr) # The lhs is in LinExpr() format. 
+            exprSize = lhs.size()
+            for k in range(exprSize): 
+                actualVar = lhs.getVar(k)
+                coefficient = lhs.getCoeff(k)
+                varInExpr = hypermodel.getVarByName(actualVar.varname)
+                lhs.addTerms(coefficient, varInExpr)
+            
+            j = exprSize - 1
+            while j >= 0: 
+                lhs.remove(j)
+                j -= 1
+
+            rhsval = constr.RHS
+            # log.joint('The lhs is: ' + str(lhs) + ', and the rhs is: ' + str(rhsval) + '\n')
+            if constr.Sense == '=': 
+                hypermodel.addConstr(lhs == rhsval, name = constr.ConstrName)
+            elif constr.Sense == '>': 
+                hypermodel.addConstr(lhs >= rhsval, name = constr.ConstrName)
+            elif constr.Sense == '<': 
+                hypermodel.addConstr(lhs <= rhsval, name = constr.ConstrName)
+        i += 1
+    #The isallbinary part I added ends here. 
 
 
     #Next, the constraints involving lambda.
@@ -764,9 +885,9 @@ def lahyper(alldata):
 
     hypermodel.setObjective(qexpr, GRB.MINIMIZE)
     if USELAMBDA:
-        filename = 'hyperlambda.lp'
+        filename = 'hyperlambda-' + lpname
     else:
-        filename = 'hyper.lp'
+        filename = 'hyper-' + lpname 
     hypermodel.write(filename)        
     log.joint('Wrote model to %s\n'%filename)
 
@@ -776,6 +897,7 @@ def lahyper(alldata):
 
 def laPerspectiveHyper(alldata):
     log = alldata['log']
+    lpname = alldata['LPFILE']
     
     log.joint('Now formulating hyperplane version. Perspective version.\n')
 
@@ -785,18 +907,31 @@ def laPerspectiveHyper(alldata):
     distsize = alldata['distsize']
     distvarset = alldata['distvarset']
     distvar_owner = alldata['distvar_owner']
+    distvar_partner = alldata['distvar_partner']
     xstar = alldata['xstar']
+    binvalue = alldata['binvalue']
     posepsilon = alldata['posepsilon']
+    model = alldata['model']
+    isallbinary = alldata['isallbinary']
+    UB = alldata['UB']
+
+    '''
+    We start by adding the variables. Unlike before, now we also need to add the y variables. 
+    For now, I ignored the part about the lambda variable. 
+    We can add that later if needed. 
+    '''
     
     bvar = {}
+    yvar = {}
     for i in range(distcount):
-        owner = distvar_owner[i]        
+        owner = distvar_owner[i] 
+        partner = distvar_partner[i]
         bvar[i] = hyperPerspModel.addVar(obj = 0.0, lb = 0, ub = 1, name = owner.varname, vtype = GRB.BINARY)
+        yvar[i] = hyperPerspModel.addVar(obj = 1.0, lb = 0, name = partner.varname)
         
     xvar = {}
-    lambdaubound = lambdalbound = 0
 
-    incoming = 10.0
+    incoming = UB**0.5 # This was previously hard-coded. I changed it. 
     log.joint('incoming upper bound on |x|: %g\n'%(incoming))
     for i in range(distcount):
         for j in range(distsize[i]):
@@ -804,67 +939,106 @@ def laPerspectiveHyper(alldata):
             lbval = max(dvarij.lb, -incoming)
             ubval = min(dvarij.ub, incoming)
             xvar[i,j] = hyperPerspModel.addVar(obj = 0.0, lb = lbval, ub = ubval, name = dvarij.varname)
-            # To add the lambda variable we need to first compute its bounds.
-            # We need 2*x_j  = lambda * x^*_j
-            # Assuming x^*j > 0 we get 2*l_j/x^*_j <= lambda <= 2*u_j/x^*_j
-            # Assuming x^*j < 0 we get 2*u_j/x^*_j <= lambda <= 2*l_j/x^*_j
-            candubound = candlbound = 0
-            if xstar[i,j] > posepsilon:
-                candubound = 2*dvarij.ub/xstar[i,j]
-                candlbound = 2*dvarij.lb/xstar[i,j]
-            elif -xstar[i,j] > posepsilon:
-                candubound = 2*dvarij.lb/xstar[i,j]
-                candlbound = 2*dvarij.ub/xstar[i,j]
-            lambdaubound = max(lambdaubound, candubound)
-            lambdalbound = min(lambdalbound, candlbound)
-
-    log.joint('lambda variable has bounds [%g, %g]\n'%(lambdalbound, lambdaubound))
-
-    lambdavar = hyperPerspModel.addVar(obj = 0.0, lb = lambdalbound, ub = lambdaubound, name = 'lambda')
     simplebreak()
 
     hyperPerspModel.update()
     
-    #let's start adding constraints.  First the hyperplane constraint.
-    expr = LinExpr()
+    #let's start adding constraints.  First the (perspective) hyperplane constraint.
+    expr = LinExpr() 
+    rhsval = 0
     for i in range(distcount):
+        '''
+        First-order optimality condition: nabla f(x^*)^T (x - x^*) >= 0 for all feasible x. 
+        f(x) = sum_{i = 1, z^*_i > 0}^M (sum_{j in S_i} x_j^2) / z^*_i. 
+        With j in S_i, nabla f(x)_j = 2 x_j / z^*_i if z^*_i > 0 and 0 if z^*_i = 0. 
+        We want the hyperplane nabla f(x^*)^T x = nabla f(x^*)^T x^*. 
+        With our f, the hyperplane is: sum_{i, j in S_i} x^*_j x_j / z^*_i = sum_{i, j in S_i} (x^*_j)^2 / z^*_i. 
+        '''
         for j in range(distsize[i]):
-            expr += xstar[i,j]*xvar[i,j]
-    hyperPerspModel.addConstr(expr == alldata['original_ss'], name = 'hyper')
+            ratio = xstar[i,j]/binvalue[i]
+            expr += ratio*xvar[i,j]
+            rhsval += xstar[i,j]**2/binvalue[i]
+    hyperPerspModel.addConstr(expr == alldata['original_pers'], name = 'hyperPers')
+    # hyperPerspModel.addConstr(expr == rhsval, name = 'hyperPers')
 
-    #Now add the selection constraints.
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            hyperPerspModel.addConstr(xvar[i,j] <= xvar[i,j].ub*bvar[i], name = 'vplus'+str(i)+','+str(j))
-            hyperPerspModel.addConstr(xvar[i,j] >= xvar[i,j].lb*bvar[i], name = 'vminus'+str(i)+','+str(j))                
+    '''
+    Question: Is rhsval more precise or alldata['original_pers'] more precise? 
+              They should be the same thing in theory. 
+    '''
 
-    #Next, the cardinality constraint.
-    expr = LinExpr()
-    for i in range(distcount):
-        expr += bvar[i]
-    hyperPerspModel.addConstr(expr <= distcount - alldata['notmaxcard'], name = 'maxcard')
+    #Now add the isallbinary constraints. Those constraints are linear. 
+    constrs = model.getConstrs()
+    i = 0
+    for constr in constrs:
+        #log.joint("At index " + str(i) + " isallbinary is " + str(isallbinary[i]) + "\n")
+        if isallbinary[i] == 1: 
+            lhs = model.getRow(constr) # The lhs is in LinExpr() format. 
+            exprSize = lhs.size()
+            for k in range(exprSize): 
+                actualVar = lhs.getVar(k)
+                coefficient = lhs.getCoeff(k)
+                varInExpr = hyperPerspModel.getVarByName(actualVar.varname)
+                lhs.addTerms(coefficient, varInExpr)
+            
+            #$$$ Here you could have saved some work by creating an entirely new lhs and
+            #    adding to it the same terms as above -- but you would have avoided
+            #    the work in the loop below
 
+            j = exprSize - 1
+            while j >= 0: 
+                lhs.remove(j)
+                j -= 1
 
-    #Next, the constraints involving lambda.
-    USELAMBDA = False
-    if USELAMBDA:
-        for i in range(distcount):
-            for j in range(distsize[i]):
-                Mj = max(0,lambdavar.ub*xstar[i,j], lambdavar.lb*xstar[i,j], -lambdavar.ub*xstar[i,j], -lambdavar.lb*xstar[i,j])
-                hyperPerspModel.addConstr(2*xvar[i,j] - xstar[i,j]*lambdavar + Mj*bvar[i] <= Mj, name = 'ulambda_'+str(j))
-                hyperPerspModel.addConstr(2*xvar[i,j] - xstar[i,j]*lambdavar - Mj*bvar[i] >= -Mj, name = 'dlambda_'+str(j))            
+            rhsval = constr.RHS
+            # log.joint('The lhs is: ' + str(lhs) + ', and the rhs is: ' + str(rhsval) + '\n')
+            if constr.Sense == '=': 
+                hyperPerspModel.addConstr(lhs == rhsval, name = constr.ConstrName)
+            elif constr.Sense == '>': 
+                hyperPerspModel.addConstr(lhs >= rhsval, name = constr.ConstrName)
+            elif constr.Sense == '<': 
+                hyperPerspModel.addConstr(lhs <= rhsval, name = constr.ConstrName)
+        i += 1
 
-    #Objective -- sum of squares
-    qexpr = QuadExpr()
-    for i in range(distcount):
-        for j in range(distsize[i]):
-            qexpr += xvar[i,j]*xvar[i,j]
+    '''
+    Next, add all the rotated second-order cone constraints. 
+    Note that a rotated second-order cone constraint only has quadratic terms. 
+    '''
+    Qconstrs = model.getQConstrs()
+    for Qconstr in Qconstrs: 
+        Qlhs = model.getQCRow(Qconstr) # The lhs is in QuadExpr() format. 
+        QExprSize = Qlhs.size() # This counts the number of quadratic terms. 
+        for k in range(QExprSize): 
+            actualVar1 = Qlhs.getVar1(k)
+            actualVar2 = Qlhs.getVar2(k)
+            Qcoeff = Qlhs.getCoeff(k)
+            var1InQExpr = hyperPerspModel.getVarByName(actualVar1.varname)
+            var2InQExpr = hyperPerspModel.getVarByName(actualVar2.varname)
+            Qlhs.addTerms(Qcoeff, var1InQExpr, var2InQExpr)
 
-    hyperPerspModel.setObjective(qexpr, GRB.MINIMIZE)
-    if USELAMBDA:
-        filename = 'hyperlambda.lp'
-    else:
-        filename = 'hyper.lp'
+        #$$$ same thing
+
+        j = QExprSize - 1
+        while j >= 0: 
+            Qlhs.remove(j) # Removes quadratic term at index j. 
+            j -= 1
+
+        Qrhsval = Qconstr.QCRHS
+        if Qconstr.QCSense == '=': 
+            hyperPerspModel.addQConstr(Qlhs == Qrhsval, name = Qconstr.QCName)
+        elif Qconstr.QCSense == '>': 
+            hyperPerspModel.addQConstr(Qlhs >= Qrhsval, name = Qconstr.QCName)
+        elif Qconstr.QCSense == '<': 
+            hyperPerspModel.addQConstr(Qlhs <= Qrhsval, name = Qconstr.QCName)
+
+    '''
+    Objective -- the original perspective formulation objective. 
+    
+    The original objective is linear. 
+    We have set the coefficients in the objective for the variables when we added them. 
+    '''
+    
+    filename = 'hyperpersp-' + lpname
+
     hyperPerspModel.write(filename)        
     log.joint('Wrote model to %s\n'%filename)
 

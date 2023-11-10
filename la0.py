@@ -12,7 +12,7 @@ from log import danoLogger
 from utils import breakexit, returnbreakexit
 from versioner import *
 from lalp import golp
-from ladoit import ladoit
+from ladoit import ladoit, lascan
 
 def read_config(log, filename):
 
@@ -41,7 +41,7 @@ def read_config(log, filename):
        if thisline[0] == 'LPFILE':
          lpfile = thisline[1]
        elif thisline[0] == 'MAXCARD':
-         maxcard = int(thisline[1])
+         MAXCARD = int(thisline[1])
        elif thisline[0] == 'UB':
          UB = float(thisline[1])
        elif thisline[0] == 'VERSION':
@@ -84,6 +84,8 @@ if __name__ == "__main__":
 
     if alldata['LPFILE'] != 'NONE':
         golp(alldata)
+
+        lascan(alldata)
 
         ladoit(alldata)
 

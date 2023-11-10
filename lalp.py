@@ -204,6 +204,43 @@ def getlp(alldata):
             log.joint('constant '+ str(lhs.getConstant()) + '\n')
 
     log.joint('Number of linear constraints: %d; nonhomogeneous: %d.\n' %(len(constrs), numnonzerorhsconstrs))
+
+    constrs = model.getConstrs()
+
+    numOfLinConstrs = len(constrs)
+    alldata['numOfLinConstrs'] = numOfLinConstrs
+
+    LOUD = False 
+    isallbinary = np.zeros(len(constrs),dtype=int)
+    ishomogeneous = np.zeros(len(constrs),dtype=int)    
+    i = 0
+    for constr in constrs:
+        lhs = model.getRow(constr)
+        if LOUD:
+            log.joint(constr.ConstrName + ' ' + constr.Sense + ' ' + str(constr.RHS) + '\n')
+
+        isallbinary[i] = 1
+        for j in range(lhs.size()):
+            #print(i,j, lhs.getCoeff(j),lhs.getVar(j).varname, lhs.getVar(j).vtype)
+            if lhs.getVar(j).vtype == 'C':
+                isallbinary[i] = 0
+                #print(' --> not all binary!')
+                break
+
+
+        ishomogeneous[i] = (constr.RHS == 0)
+        if ishomogeneous[i] == False and isallbinary[i] == 0:
+            log.joint(constr.Constrname + ' nonhomogeneous, RHS '+ str(constr.RHS) + '\n')
+        i += 1
+
+    log.joint('Number of linear constraints = %d\n'%(len(constrs)))
+    log.joint('Number of all-binary linear constraints = %d\n'%(np.sum(isallbinary)))
+    log.joint('Number of homogeneous linear constraints = %d\n'%(np.sum(ishomogeneous)))
+
+    alldata['isallbinary'] = isallbinary
+    alldata['ishomogeneous'] = ishomogeneous
+    breakexit('bar')
+
     if LOUD:
         log.joint('Bilinear/quadratic terms:')
         for k in range(1,1+pairscount):
