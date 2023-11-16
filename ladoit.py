@@ -304,6 +304,8 @@ def laPerspective(alldata):
     #laSShyper(alldata)
 
     laPerspectiveHyper(alldata)
+    simplebreak()
+    laPerspectiveHyperCheck_inmem(alldata)
     
 def laSumOfSquares(alldata):
     log = alldata['log']
@@ -901,7 +903,8 @@ def laPerspectiveHyper(alldata):
     
     log.joint('Now formulating hyperplane version. Perspective version.\n')
 
-    hyperPerspModel = Model("hyperpersp")
+    alldata['hyperPerspModel'] = hyperPerspModel = Model("hyperpersp")
+    
 
     distcount = alldata['distcount']
     distsize = alldata['distsize']
@@ -1044,5 +1047,261 @@ def laPerspectiveHyper(alldata):
 
 
     simplebreak()
+
+def laPerspectiveHyperCheck_inmem(alldata):
+    log = alldata['log']
+    lpname = alldata['LPFILE']
+
+    log.joint('First, solve the original hyperPerspModel\n')
+
+    hyperPerspModel = alldata['hyperPerspModel']
+
+
+    lasolveLPwithmodel(alldata, 'laPerspHyperCheck', hyperPerspModel)    
+    
+    log.joint('laPerspectiveHyperCheck now checking which constraints are not satisfied.\n')
+
+    hyperPerspModelCheck = Model("hyperperspcheck")
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    distvar_owner = alldata['distvar_owner']
+    distvar_partner = alldata['distvar_partner']
+    binvalue = alldata['binvalue']
+    posepsilon = alldata['posepsilon']
+    model = alldata['model']
+    isallbinary = alldata['isallbinary']
+    UB = alldata['UB']
+
+    xhatbyname = alldata['xhatbyname']
+
+
+    constrs = model.getConstrs()
+    i = 0
+    for constr in constrs:
+        #log.joint("At index " + str(i) + " isallbinary is " + str(isallbinary[i]) + "\n")
+        if isallbinary[i] == 0:
+            lhsvalue = 0
+            lhs = model.getRow(constr) # The lhs is in LinExpr() format. 
+            exprSize = lhs.size()
+            sum = 0
+            for k in range(exprSize): 
+                actualVar = lhs.getVar(k)
+                coefficient = lhs.getCoeff(k)
+                #varInExpr = hyperPerspModelCheck.getVarByName(actualVar.varname)
+
+                sum += coefficient*xhatbyname[actualVar.varname]
+            rhsval = constr.RHS
+            log.joint('The lhs for ' + constr.ConstrName +' is: ' + str(sum) + ', and the rhs is: ' + str(rhsval) + '\n')
+        i += 1
+    simplebreak()
     
 
+    
+def laPerspectiveHyperCheck_read(alldata):
+    log = alldata['log']
+    lpname = alldata['LPFILE']
+
+    log.joint('First, solve the original hyperPerspModel\n')
+
+    hyperPerspModel = alldata['hyperPerspModel']
+    #hyperPerspModel.optimize()
+
+    lasolveLPwithmodel(alldata, 'laPerspHyperCheck', hyperPerspModel)    
+
+    simplebreak()
+    
+    log.joint('laPerspectiveHyperCheck now checking which constraints are not satisfied.\n')
+
+    hyperPerspModelCheck = Model("hyperperspcheck")
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    distvar_owner = alldata['distvar_owner']
+    distvar_partner = alldata['distvar_partner']
+    xstar = alldata['xstar']
+    binvalue = alldata['binvalue']
+    posepsilon = alldata['posepsilon']
+    model = alldata['model']
+    isallbinary = alldata['isallbinary']
+    UB = alldata['UB']
+
+    # file1 is the txt file that contains x^* after solving hyperpersp-little_brother_test.lp
+    file1 = open('hyperpersp-little_brother_test.sol', 'r')
+
+    array1 = []
+    for line in file1: array1.append([x.strip() for x in line.split()])
+
+    x_star = []
+    x_star_varname = []
+
+    for i in range(101, len(array1)-100): 
+        item = float(array1[i][1])
+        varname = str(array1[i][0])
+        x_star.append(item)
+        x_star_varname.append(varname)
+
+    xvar = {}
+    for i in range(101, len(array1)-100): 
+        xvar[i-101] = hyperPerspModelCheck.addVar(obj = 0.0, lb = x_star[i-101], ub = x_star[i-101], name = x_star_varname[i-101])
+    
+    plusvar = {}
+    # minusvar = {}
+    for i in range(101, len(array1)-100): 
+        plusvar[i-101] = hyperPerspModelCheck.addVar(obj = 0.0, lb = float('-inf'), name = 'p' + str(i - 101 + 2))
+
+    simplebreak()
+
+    hyperPerspModelCheck.update()
+
+    #Now add the Ax = b constraints. Those constraints are linear. 
+    constrs = model.getConstrs()
+    i = 0
+    for constr in constrs:
+        #log.joint("At index " + str(i) + " isallbinary is " + str(isallbinary[i]) + "\n")
+        if isallbinary[i] == 0: 
+            lhs = model.getRow(constr) # The lhs is in LinExpr() format. 
+            exprSize = lhs.size()
+            for k in range(exprSize): 
+                actualVar = lhs.getVar(k)
+                coefficient = lhs.getCoeff(k)
+                varInExpr = hyperPerspModelCheck.getVarByName(actualVar.varname)
+                lhs.addTerms(coefficient, varInExpr)
+            
+            #$$$ Here you could have saved some work by creating an entirely new lhs and
+            #    adding to it the same terms as above -- but you would have avoided
+            #    the work in the loop below
+
+            j = exprSize - 1
+            while j >= 0: 
+                lhs.remove(j)
+                j -= 1
+
+            lhs.addTerms(1, plusvar[i])
+
+            rhsval = constr.RHS
+            # log.joint('The lhs is: ' + str(lhs) + ', and the rhs is: ' + str(rhsval) + '\n')
+            if constr.Sense == '=': 
+                hyperPerspModelCheck.addConstr(lhs == rhsval, name = constr.ConstrName)
+            elif constr.Sense == '>': 
+                hyperPerspModelCheck.addConstr(lhs >= rhsval, name = constr.ConstrName)
+            elif constr.Sense == '<': 
+                hyperPerspModelCheck.addConstr(lhs <= rhsval, name = constr.ConstrName)
+        i += 1
+
+    filename = 'hyperperspcheck-' + lpname
+
+    hyperPerspModelCheck.write(filename)        
+    log.joint('Wrote model to %s\n'%filename)
+
+
+    simplebreak()
+    
+
+
+def lasolveLPwithmodel(alldata, header, model):
+    log = alldata['log']
+
+    log.joint('Now solving LP in lasolveLPwithmodel.\n')
+
+    log.joint("variables = " + str(model.NumVars) + "\n")
+    log.joint("constraints = " + str(model.NumConstrs) + "\n")
+
+    model.optimize()
+
+    code = 0
+
+    if model.status == GRB.status.INF_OR_UNBD:
+        log.joint('->LP infeasible or unbounded')
+        model.Params.DualReductions = 0
+        model.optimize()
+    if model.status == GRB.status.INFEASIBLE:
+        log.joint('->LP infeasible\n')                                            
+        model.computeIIS()
+        model.write("model.ilp")
+        code = 1
+        return code, 1e10, 1e10  #bad: hard-coded
+    elif model.status == GRB.status.UNBOUNDED:
+        log.joint('->LP unbounded\n')                                             
+        sys.exit(0)
+    elif model.status == GRB.OPTIMAL:
+        log.joint(' ->OPTIMAL\n')
+
+    log.joint('Optimal objective = %g\n' % model.objVal)
+
+    model.printQuality()
+
+    # Now, get solution stats.
+
+
+    cheatcoeff = alldata['cheatcoeff']
+    distvalue2 = 0
+    distcount = alldata['distcount']    
+    setvalue2 = np.zeros(distcount)
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    distvar_owner = alldata['distvar_owner']
+    distvar_partner = alldata['distvar_partner']
+    # binvalue = np.zeros(distcount)
+
+    hatbinvalue = alldata['hatbinvalue'] = np.zeros(distcount)
+    xhat = alldata['xhat'] = {}
+
+    xhatbyname = alldata['xhatbyname'] = {}
+
+    numpositive = 0
+    TOL = 1e-10
+
+    LOUD = False
+    for i in range(distcount):
+        owneri = distvar_owner[i]
+        hatowneri = model.getVarByName(owneri.varname)
+        #ub_sum += cheatcoeff*owneri.x
+
+        hatbinvalue[i] = hatowneri.x
+        setvalue2[i] = 0
+        for j in range(distsize[i]):
+            dvarij = distvarset[i][j]
+            hatdvarij = model.getVarByName(dvarij.varname)
+
+            xvalue = hatdvarij.x
+            xhat[i,j] = xvalue
+            xhatbyname[hatdvarij.varname] = xvalue
+            
+            if abs(xvalue) > TOL:
+                setvalue2[i] += hatdvarij.x*hatdvarij.x
+                if LOUD:
+                    log.joint('Set %d, elt %d (%s) at value %g\n'%(i,j,dvarij.varname, hatdvarij.x))
+
+        distvalue2 += setvalue2[i]
+        numpositive += setvalue2[i] > TOL
+        log.joint('Set %d size %d sum-of-squares %g; binary owner value %g\n'%(i, distsize[i], setvalue2[i], hatowneri.x))
+        #simplebreak()
+    log.joint('Positives: %d; sum total %g\n'%(numpositive, distvalue2))
+
+
+    simplebreak()
+    sumsmallest2 = 0
+    ind = np.argsort(-setvalue2)
+    ordered = setvalue2[ind]
+
+
+    header = False
+    sum = 0
+
+
+    for k in range(distcount):
+        i = ind[k]
+        owneri = distvar_owner[i]
+        hatowneri = model.getVarByName(owneri.varname)
+        sum += hatowneri.x
+        if hatowneri.x > 1e-2:
+            log.joint('Ordered set %d is %d (%s) binary at %g; setvalue2 %.5e\n'%(k,i, hatowneri.varname, hatowneri.x, setvalue2[i]))
+
+            
+
+    return code, model.objVal
+        
+    
