@@ -60,6 +60,7 @@ def lascan(alldata):
     varlindeg = alldata['varlindeg']
     varlindeg_bin = {}
     vartype_mine = {}
+    varclass = {}
     distcount = 0  # number of distance sets
     distname = {} # name of constraint for current distance set
     distvarset = {}   # variables in current distance set
@@ -133,7 +134,7 @@ def lascan(alldata):
 
                     distvar_owner[distcount] = v2
                     distvar_partner[distcount] = v1
-                    print('hello!')
+                    #print('hello!')
                     
                 elif vartype_mine[v1.varname] == 'int' and varlindeg_bin[v1.varname] and varlindeg[v2.varname]== 0 and vartype_mine[v2.varname] != 'int':
                     # reverse good case
@@ -149,8 +150,12 @@ def lascan(alldata):
                     code = 1
                     simplebreak()                    
                     break
+                varclass[ (distvar_owner[distcount]).varname ] = 'indicator'
+                varclass[ (distvar_partner[distcount]).varname ] = 'distance'
             else: #v1 = v2, i.e., a square
                 distvarset[distcount].append(v1)
+
+                varclass[v1.varname] = 'groundset'
                 
                 if coeff != 1.0:
                     log.joint(Qconstr.QCName+ ' fails coeff=1.\n')                
@@ -219,9 +224,14 @@ def lascan(alldata):
     alldata['distvar_partner'] = distvar_partner
     alldata['distconstr'] = distconstr
 
+    alldata['varclass'] = varclass
+
     tend = time.time()
 
     log.joint('Done analyzing in time %g\n'%(tend - tstart))
+
+
+    breakexit('Done with lascan.')
 
 
     return code

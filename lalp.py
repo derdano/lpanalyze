@@ -229,8 +229,8 @@ def getlp(alldata):
 
 
         ishomogeneous[i] = (constr.RHS == 0)
-        if ishomogeneous[i] == False and isallbinary[i] == 0:
-            log.joint(constr.Constrname + ' nonhomogeneous, RHS '+ str(constr.RHS) + '\n')
+        #if ishomogeneous[i] == False and isallbinary[i] == 0:
+        #    log.joint(constr.Constrname + ' nonhomogeneous, RHS '+ str(constr.RHS) + '\n')
         i += 1
 
     log.joint('Number of linear constraints = %d\n'%(len(constrs)))
@@ -239,7 +239,7 @@ def getlp(alldata):
 
     alldata['isallbinary'] = isallbinary
     alldata['ishomogeneous'] = ishomogeneous
-    breakexit('bar')
+    #breakexit('bar')
 
     if LOUD:
         log.joint('Bilinear/quadratic terms:')

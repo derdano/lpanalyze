@@ -1,6 +1,11 @@
 import sys
 import os.path
 
+def simplebreak():
+    stuff = input('break > ')
+    if stuff == 'x' or stuff == 'q':
+        sys.exit("bye")
+
 def breakexit(foo):
     stuff = input("("+foo+") break> ")
     if stuff == 'x' or stuff == 'q':
