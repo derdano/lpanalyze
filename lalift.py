@@ -70,12 +70,58 @@ def lalift(alldata, distset_index):
 
     # First we will create the variables used in the disjunction: "_0" and "_1".
     #
-    # We run through all variables in the original model and we create the lifted variable modeling
-    # its product with the lifting variable, as well as a copy of the variable itself (first)
+    # We run through all variables in the original model and we create the _0 and _1 lifted variables,
+    #   as well as a copy of the variable itself (which we do first first)
 
     for var in model.getVars():
         Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = var.varname)
-    for var in model.getVars():
-        Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = var.varname + '_' + liftingvariable.varname)
+    for DisjunctionCase in range(2):
+        for var in model.getVars():
+            newname = var.varname + '_' + str(DisjunctionCase)
+            #if newname[0] == 'b': print(newname)
+            if var.varname == liftingvariable.varname: print(newname)            
+            Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = newname)
+
+    # there is some waste in this, in particular in terms of the lifting variable, but it's OK for now
+
+    #
+    Dmodel.update()
+     
+    constrs = model.getConstrs()
+    for DisjunctionCase in range(2):
+        Dliftingvariable = Dmodel.getVarByName(liftingvariable.Varname+'_'+str(DisjunctionCase))
+        for constr in constrs:
+            expr = LinExpr() #the new constraint
+            
+            lhs = model.getRow(constr)
+            exprSize = lhs.size()
+            for k in range(exprSize): 
+                actualVar = lhs.getVar(k)
+                #print(actualVar.Varname)
+                liftedvar = Dmodel.getVarByName(actualVar.Varname+'_'+str(DisjunctionCase))
+                
+                coefficient = lhs.getCoeff(k)
+
+                if actualVar.Varname == liftingvariable.Varname and DisjunctionCase == 0:
+                    coefficient = 0
+            
+                expr += coefficient*liftedvar
+
+            rhsval = constr.RHS
+            expr -= rhsval*Dliftingvariable
+
+            print(constr.ConstrName)
+            print(expr)
+            if constr.Sense == '=': 
+                Dmodel.addConstr(expr == 0, name = constr.ConstrName + '_' + str(DisjunctionCase))
+            elif constr.Sense == '>': 
+                Dmodel.addConstr(expr >= 0, name = constr.ConstrName + '_' + str(DisjunctionCase))
+            elif constr.Sense == '<': 
+                Dmodel.addConstr(expr <= 0, name = constr.ConstrName + '_' + str(DisjunctionCase))
+
+    Dmodel.update()
+
+    Dmodel.write('D.lp')
+
 
     breakexit('lalifted')
