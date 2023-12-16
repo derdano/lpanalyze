@@ -151,7 +151,7 @@ def lascan(alldata):
                     simplebreak()                    
                     break
                 varclass[ (distvar_owner[distcount]).varname ] = 'indicator'
-                varclass[ (distvar_partner[distcount]).varname ] = 'distance'
+                varclass[ (distvar_partner[distcount]).varname ] = 'distance_sum'
             else: #v1 = v2, i.e., a square
                 distvarset[distcount].append(v1)
 

@@ -11,7 +11,7 @@ import time
 
 
 
-def lalift(alldata):
+def lalift(alldata, distset_index):
     log = alldata['log']
 
     global MYDEBUG
@@ -46,3 +46,36 @@ def lalift(alldata):
     # (2) In the one case, 
     #   Appropriately handle rhs (e.g., >= 5 becomes -5 z_j >= 0).
     #   Appropriately handle cardinality constraint.
+
+    #
+
+    # To help with this, varclass is used to keep track of the nature of variables
+    # 'indicator' (binary), 'distance_sum' (y variable) and 'groundset' (x variable).
+
+
+    distcount = alldata['distcount']
+    distsize = alldata['distsize']
+    distvarset = alldata['distvarset']
+    distvar_owner = alldata['distvar_owner'] 
+    distvar_partner = alldata['distvar_partner']
+    distconstr = alldata['distconstr']
+    
+
+    liftingvariable = distvar_owner[distset_index]
+    log.joint('Lifting using set %d variable %s\n' %(distset_index, liftingvariable.varname))
+
+    model = alldata['model']
+
+    Dmodel = Model('disjunctmodel')
+
+    # First we will create the variables used in the disjunction: "_0" and "_1".
+    #
+    # We run through all variables in the original model and we create the lifted variable modeling
+    # its product with the lifting variable, as well as a copy of the variable itself (first)
+
+    for var in model.getVars():
+        Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = var.varname)
+    for var in model.getVars():
+        Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = var.varname + '_' + liftingvariable.varname)
+
+    breakexit('lalifted')

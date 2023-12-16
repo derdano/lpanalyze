@@ -13,6 +13,7 @@ from utils import breakexit, returnbreakexit
 from versioner import *
 from lalp import golp
 from ladoit import ladoit, lascan
+from lalift import lalift
 
 def read_config(log, filename):
 
@@ -32,6 +33,7 @@ def read_config(log, filename):
     MAXCARD = 75
     UB = 125
     VERSION = 'SumOfSquares'
+    ACTION = 'Standard'
 
     while linenum < len(lines):
      thisline = lines[linenum].split()
@@ -46,6 +48,8 @@ def read_config(log, filename):
          UB = float(thisline[1])
        elif thisline[0] == 'VERSION':
          VERSION = thisline[1]
+       elif thisline[0] == 'ACTION':
+         ACTION = thisline[1]
        elif thisline[0] == 'END':
          break
        else:
@@ -53,7 +57,7 @@ def read_config(log, filename):
 
      linenum += 1
 
-    for x in [('LPFILE',lpfile), ('MAXCARD',MAXCARD), ('UB', UB), ('VERSION',VERSION)]:
+    for x in [('LPFILE',lpfile), ('MAXCARD',MAXCARD), ('UB', UB), ('VERSION',VERSION), ('ACTION', ACTION)]:
       if x[1] == 'NONE':
         log.stateandquit(' no ' + x[0] + ' input'+'\n')
       alldata[x[0]] = x[1]
@@ -87,6 +91,9 @@ if __name__ == "__main__":
 
         lascan(alldata)
 
-        ladoit(alldata)
+        if alldata['ACTION'] == 'Lift_and_Project':
+            lalift(alldata, 0)
+        else:
+            ladoit(alldata)
 
     log.closelog()    
