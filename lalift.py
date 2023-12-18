@@ -110,8 +110,8 @@ def lalift(alldata, distset_index):
             rhsval = constr.RHS
             expr -= rhsval*Dliftingvariable
 
-            print(constr.ConstrName)
-            print(expr)
+            #print(constr.ConstrName)
+            #print(expr)
             if constr.Sense == '=': 
                 Dmodel.addConstr(expr == 0, name = constr.ConstrName + '_' + str(DisjunctionCase))
             elif constr.Sense == '>': 
@@ -120,6 +120,18 @@ def lalift(alldata, distset_index):
                 Dmodel.addConstr(expr <= 0, name = constr.ConstrName + '_' + str(DisjunctionCase))
 
     Dmodel.update()
+
+    # Now add constraints that effect the disjunction, i.e., for every variable v we write v = v_0 + v_1.
+
+    for var in model.getVars():
+        var1 = Dmodel.getVarByName(var.Varname+'_1')
+        var0 = Dmodel.getVarByName(var.Varname+'_0')
+        varvar = Dmodel.getVarByName(var.Varname)
+        if var.Varname != liftingvariable.Varname:
+            Dmodel.addConstr(varvar == var0 + var1, name = 'Dis_'+var.Varname)
+        else:
+            Dmodel.addConstr(varvar == var1, name = 'Unique_'+var.Varname)
+
 
     Dmodel.write('D.lp')
 
