@@ -61,6 +61,8 @@ def lascan(alldata):
     varlindeg_bin = {}
     vartype_mine = {}
     varclass = {}
+    varSet = {} 
+
     distcount = 0  # number of distance sets
     distname = {} # name of constraint for current distance set
     distvarset = {}   # variables in current distance set
@@ -152,10 +154,13 @@ def lascan(alldata):
                     break
                 varclass[ (distvar_owner[distcount]).varname ] = 'indicator'
                 varclass[ (distvar_partner[distcount]).varname ] = 'distance_sum'
+                varSet[ (distvar_owner[distcount]).varname ] = 'Self' # i.e., none
+                varSet[ (distvar_partner[distcount]).varname ] = (distvar_owner[distcount]).varname 
             else: #v1 = v2, i.e., a square
                 distvarset[distcount].append(v1)
 
                 varclass[v1.varname] = 'groundset'
+                varSet[v1.varname] = (distvar_owner[distcount]).varname 
                 
                 if coeff != 1.0:
                     log.joint(Qconstr.QCName+ ' fails coeff=1.\n')                
@@ -225,6 +230,7 @@ def lascan(alldata):
     alldata['distconstr'] = distconstr
 
     alldata['varclass'] = varclass
+    alldata['varSet'] = varSet
 
     tend = time.time()
 
