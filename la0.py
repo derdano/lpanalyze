@@ -15,6 +15,46 @@ from lalp import golp
 from ladoit import ladoit, lascan
 from lalift import lalift
 
+def laread_solution(alldata, filename):
+
+    log = alldata['log']
+
+    log.joint("reading solution file " + filename + "\n")
+
+    try:
+        f = open(filename, "r")
+        lines = f.readlines()
+        f.close()
+    except:
+        log.stateandquit("cannot open file " + filename + "\n")
+
+    vectordictionary = {}
+    model = alldata['model']
+    seen = {}    
+    for var in model.getVars():
+        seen[var.varname] = 1
+
+
+    linenum = 0
+
+    while linenum < len(lines):
+     thisline = lines[linenum].split()
+
+     if len(thisline) > 0 and thisline[0][0] != '#':
+         if thisline[0] != 'END':         
+            varname = thisline[0]
+            varvalue = float(thisline[2])
+            #print(varname, varvalue)
+            if varname not in seen:
+                 print(varname, varvalue)                 
+                 breakexit('hey')
+            vectordictionary[varname] = varvalue
+         elif thisline[0] == 'END':
+             break
+     linenum += 1
+    
+    return vectordictionary
+    
 def read_config(log, filename):
 
     log.joint("reading config file " + filename + "\n")
@@ -28,12 +68,14 @@ def read_config(log, filename):
 
     alldata = {}
     lpfile = 'NONE'
+    solutionfile = None
     linenum = 0
 
     MAXCARD = 75
     UB = 125
     VERSION = 'SumOfSquares'
     ACTION = 'Standard'
+    
 
     while linenum < len(lines):
      thisline = lines[linenum].split()
@@ -49,7 +91,9 @@ def read_config(log, filename):
        elif thisline[0] == 'VERSION':
          VERSION = thisline[1]
        elif thisline[0] == 'ACTION':
-         ACTION = thisline[1]
+         ACTION = thisline[1:3]
+       elif thisline[0] == 'SOLUTIONFILE':
+         solutionfile = thisline[1]
        elif thisline[0] == 'END':
          break
        else:
@@ -57,7 +101,7 @@ def read_config(log, filename):
 
      linenum += 1
 
-    for x in [('LPFILE',lpfile), ('MAXCARD',MAXCARD), ('UB', UB), ('VERSION',VERSION), ('ACTION', ACTION)]:
+    for x in [('LPFILE',lpfile), ('MAXCARD',MAXCARD), ('UB', UB), ('VERSION',VERSION), ('ACTION', ACTION), ('SOLUTIONFILE', solutionfile)]:
       if x[1] == 'NONE':
         log.stateandquit(' no ' + x[0] + ' input'+'\n')
       alldata[x[0]] = x[1]
@@ -91,8 +135,12 @@ if __name__ == "__main__":
 
         lascan(alldata)
 
-        if alldata['ACTION'] == 'Lift_and_Project':
-            lalift(alldata, 0)
+        if alldata['SOLUTIONFILE'] != 'None':
+            vectordictionary = laread_solution(alldata, alldata['SOLUTIONFILE'])
+
+
+        if alldata['ACTION'][0] == 'Lift_and_Project':
+            lalift(alldata, liftingvariablename = alldata['ACTION'][1], vectordictionary = vectordictionary)
         else:
             ladoit(alldata)
 

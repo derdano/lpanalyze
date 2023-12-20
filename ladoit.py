@@ -69,6 +69,7 @@ def lascan(alldata):
     distsize = {}  # number of vars in current distance set
     distvar_owner = {}  # binary variable owner for current distance set
     distvar_partner = {}  # continuous variable multiplied times owner in current distance set
+    distset_byname = {} #index of distset, by name of binary variable
     distconstr = {} # distance constraint as we index it
 
     seen = {}    
@@ -136,6 +137,7 @@ def lascan(alldata):
 
                     distvar_owner[distcount] = v2
                     distvar_partner[distcount] = v1
+
                     #print('hello!')
                     
                 elif vartype_mine[v1.varname] == 'int' and varlindeg_bin[v1.varname] and varlindeg[v2.varname]== 0 and vartype_mine[v2.varname] != 'int':
@@ -145,7 +147,7 @@ def lascan(alldata):
 
                     distvar_owner[distcount] = v1
                     distvar_partner[distcount] = v2
-                   
+                    
                 else:
                     log.joint(Qconstr.QCName+ ' fails bindeg.\n')                
                     print(v1.varname, varlindeg[v1.varname], v2.varname, varlindeg[v2.varname])
@@ -155,7 +157,8 @@ def lascan(alldata):
                 varclass[ (distvar_owner[distcount]).varname ] = 'indicator'
                 varclass[ (distvar_partner[distcount]).varname ] = 'distance_sum'
                 varSet[ (distvar_owner[distcount]).varname ] = 'Self' # i.e., none
-                varSet[ (distvar_partner[distcount]).varname ] = (distvar_owner[distcount]).varname 
+                varSet[ (distvar_partner[distcount]).varname ] = (distvar_owner[distcount]).varname
+                distset_byname[ (distvar_owner[distcount]).varname ] = distcount
             else: #v1 = v2, i.e., a square
                 distvarset[distcount].append(v1)
 
@@ -215,7 +218,6 @@ def lascan(alldata):
     numOfLinConstrs = len(constrs)
     alldata['numOfLinConstrs'] = numOfLinConstrs
 
-
     LOUD = False # Resetting LOUD to False 
 
     log.joint('Final code: ' + str(code) + '.\n')
@@ -228,16 +230,17 @@ def lascan(alldata):
     alldata['distvar_owner'] = distvar_owner
     alldata['distvar_partner'] = distvar_partner
     alldata['distconstr'] = distconstr
+    
 
     alldata['varclass'] = varclass
     alldata['varSet'] = varSet
-
+    alldata['distset_byname'] = distset_byname
     tend = time.time()
 
     log.joint('Done analyzing in time %g\n'%(tend - tstart))
 
 
-    breakexit('Done with lascan.')
+    #breakexit('Done with lascan.')
 
 
     return code

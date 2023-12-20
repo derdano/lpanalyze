@@ -11,7 +11,7 @@ import time
 
 
 
-def lalift(alldata, distset_index):
+def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
     log = alldata['log']
 
     global MYDEBUG
@@ -63,24 +63,31 @@ def lalift(alldata, distset_index):
     distvar_partner = alldata['distvar_partner']
     distconstr = alldata['distconstr']
     varSet = alldata['varSet']
-
-    liftingvariable = distvar_owner[distset_index]
-    log.joint('Lifting using set %d variable %s\n' %(distset_index, liftingvariable.varname))
+    distset_byname = alldata['distset_byname']
 
     model = alldata['model']
+
+    liftingvariable = model.getVarByName(liftingvariablename)
+    distset_index = distset_byname[liftingvariablename]
+    #liftingvariable = distvar_owner[distset_index]
+    log.joint('Lifting using set %d variable %s\n' %(distset_index, liftingvariable.varname))
 
     Dmodel = Model('disjunctmodel')
 
     # First we will create the variables used in the disjunction: "_0" and "_1".
+    # Say that the lifting variable is z.  Given another variable w, we write
+    #     w_1 to denote the linearized z*w and w_0 to denote the linearized (1 - z)*w
+    # We also write: z_1 to model z and z_0 to model 1 - z
     #
     # We run through all variables in the original model and we create the _0 and _1 lifted variables,
     #   as well as a copy of the variable itself (which we do first first)
 
     # hack code for giving an arbitrary value to the target
-    j = 0
-    for var in model.getVars():
-        j += 1
-        target[var.Varname] = j
+    #j = 0
+    #for var in model.getVars():
+    #    j += 1
+    #    target[var.Varname] = j
+    target = vectordictionary
 
     for var in model.getVars():
         Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = var.varname)
@@ -88,8 +95,8 @@ def lalift(alldata, distset_index):
         for var in model.getVars():
             newname = var.varname + '_' + str(DisjunctionCase)
             #if newname[0] == 'b': print(newname)
-            if var.varname == liftingvariable.varname: print(newname)
-
+            if var.varname == liftingvariablename:
+                print(newname)
             thisub = var.ub
             thislb = var.lb
 
