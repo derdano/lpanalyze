@@ -17,14 +17,18 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
     global MYDEBUG
     MYDEBUG = False
 
-    target = {} # Later we will modify this so that it is passed to lalift
-                # as a dictionary describing (x*, y*, z*) by variable name.
 
     # For now, in each iteration we will formulate and solve a new problem
     # The problem will consider a given binary variable: z_j
-    # Given (x*, y*, z*) = target, the problem will compute the distance from (x*,y*,z*) to the
+    # Given (x*, y*, z*) = target, the problem will compute the minimum distance from (x*,y*,z*) to the
     # projection, in (x,y,z) space, of the z_j - convexified lifted formulation of the problem,
     # That is to say, the convex hull of feasible solutions where z_j = 0 or 1.
+
+    # The output is the nearest point to (x*,y*,z*) in the projection of the lifted formulation to (x,y,z) space.
+
+    # liftingvariablename is the name of the binary variable being disjuncted
+    # vectordictionary is a dictionary, indexed by variable name, containing
+    # (x*, y*, z*)
 
     # The formulation in the lifted space will have four parts:
     # (a) A copy of the formulation multiplied by z_j and linearized; corresponding to z_j = 1.
@@ -35,7 +39,6 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
     # (e) Constraints and variables used to model the distance between (x,y,z) and (x*,y*,z*).
 
     
-
     # For (a) and (b) we will use the same code, where the "1" and "0" case are distinguished
     # using a flag.  We need logic so as to
 
@@ -82,11 +85,15 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
     # We run through all variables in the original model and we create the _0 and _1 lifted variables,
     #   as well as a copy of the variable itself (which we do first first)
 
+    target = {}
+    
     # hack code for giving an arbitrary value to the target
     #j = 0
     #for var in model.getVars():
     #    j += 1
     #    target[var.Varname] = j
+
+
     target = vectordictionary
 
     for var in model.getVars():
@@ -173,8 +180,6 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
             elif Qconstr.QCSense == '<': 
                 Dmodel.addQConstr(Dqexpr <= Qrhsval, name = Qconstr.QCName + '_' + str(DisjunctionCase))
 
-
-            
         
     Dmodel.update()
 
