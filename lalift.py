@@ -11,7 +11,11 @@ import time
 
 
 
-def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
+def lalift(alldata, liftingvariablename, vectordictionary): 
+
+    # To do: add the iteration count as another argument, so that output refers
+    # to that.
+    
     log = alldata['log']
 
     global MYDEBUG
@@ -33,7 +37,7 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
     # The formulation in the lifted space will have four parts:
     # (a) A copy of the formulation multiplied by z_j and linearized; corresponding to z_j = 1.
     # (b) A copy of the formulation multiplied by 1-z_j and linearized; corresponding to z_j = 0.
-    # (c) A constraint saying that (x,y,z) = (x1, y1, z1) + (x0, y0, z0), where the "1" or "0".
+    # (c) A constraint saying that (x,y,z) = (x1, y1, z1) + (x0, y0, z0), where the "_1" or "_0".
     #     refers to the vector in (a) or (b), respectively.
     # (d) Have to handle individual variable bounds.
     # (e) Constraints and variables used to model the distance between (x,y,z) and (x*,y*,z*).
@@ -101,7 +105,7 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
     for DisjunctionCase in range(2):
         for var in model.getVars():
             newname = var.varname + '_' + str(DisjunctionCase)
-            #if newname[0] == 'b': print(newname)
+
             if var.varname == liftingvariablename:
                 print(newname)
             thisub = var.ub
@@ -109,6 +113,8 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
 
             if varSet[var.varname] == liftingvariable.varname and DisjunctionCase == 0:
                 thislb = thisub = 0
+                print('Setting ', var.varname,' to zero in case', DisjunctionCase)
+                
             Dmodel.addVar(obj = 0.0, lb = thislb, ub = thisub, name = newname)
 
             # This needs to be fixed.  In the 0 case, the x and y variables that belong to the set for the lifting variable
@@ -204,8 +210,20 @@ def lalift(alldata, liftingvariablename, vectordictionary): #distset_index):
 
 
     Dmodel.setObjective(distance2, GRB.MINIMIZE)
-    
+
+    # Optional.  
     Dmodel.write('D.lp')
+    # If we write the LP to a file, the name of the file should include the iteration count, e.g. D_5.lp.
 
 
     breakexit('lalifted')
+
+    # To do:
+    # First we need to solve the optimization problem and handle the outcome of the optimization as in mygurobi.py
+
+    # Second, compute the separating cut.  Suppose X* = (x*, y*, z*) is the point to separate (given in vectordictionary), and
+    # X' = (x', y', z') is the optimal solution to the LP in (x,y,z) space, i.e., ignoring the lifted variables
+    # Then we want to compute the hyperplane through X' that is orthogonal to (X* - X').
+    # In fact we want to compute the inequality, given by this hyperplane, that cuts off X*.
+
+    # Finally, we want to return this inequality (something of the form >= ) as well as X', the latter for analysis later on

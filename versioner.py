@@ -8,5 +8,5 @@ import time
 from log import *
 
 def stateversion(log):
- log.joint('<Version Wed.Dec.20.121035.2023@freestyle.local>')
+ log.joint('<Version Mon.Dec.25.104815.2023@freestyle>')
 
