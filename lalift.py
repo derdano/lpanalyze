@@ -82,9 +82,11 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     Dmodel = Model('disjunctmodel')
 
     # First we will create the variables used in the disjunction: "_0" and "_1".
-    # Say that the lifting variable is z.  Given another variable w, we write
-    #     w_1 to denote the linearized z*w and w_0 to denote the linearized (1 - z)*w
-    # We also write: z_1 to model z and z_0 to model 1 - z
+    # Say that the lifting variable is zk.  Given another variable w (i.e., not zk), we write
+    #     w_1 to denote the linearized w*zk and w_0 to denote the linearized w*(1 - zk)
+    # We also write: z_1 to model zk and z_0 to model 1 - zk.  So z_1 + z_0 = 1
+    # if W = (x,y,z) is a convex combination of W1 where zk = 1, and W0 where zk = 0, i.e.
+    # if W = lambda*W1 + (1 - lambda)*W0, then zk = lambda*1 + (1-lambda)*0, and so zk = lambda
     #
     # We run through all variables in the original model and we create the _0 and _1 lifted variables,
     #   as well as a copy of the variable itself (which we do first first)
@@ -99,6 +101,7 @@ def lalift(alldata, liftingvariablename, vectordictionary):
 
 
     target = vectordictionary
+    liftedvariablenames = {}
 
     for var in model.getVars():
         Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = var.varname)
@@ -107,7 +110,12 @@ def lalift(alldata, liftingvariablename, vectordictionary):
             newname = var.varname + '_' + str(DisjunctionCase)
 
             if var.varname == liftingvariablename:
+                if DisjunctionCase == 0:
+                    newname = 'one_minus_'+var.varname
+                else:
+                    newname = 'copy_of_'+var.varname
                 print(newname)
+            liftedvariablenames[var.varname, DisjunctionCase] = newname
             thisub = var.ub
             thislb = var.lb
 
@@ -129,7 +137,7 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     Qconstrs = model.getQConstrs()
     
     for DisjunctionCase in range(2):
-        Dliftingvariable = Dmodel.getVarByName(liftingvariable.Varname+'_'+str(DisjunctionCase))
+        Dliftingvariable = Dmodel.getVarByName(liftedvariablenames[liftingvariable.Varname,DisjunctionCase])
 
         # First, linear constraints.
         
@@ -141,7 +149,8 @@ def lalift(alldata, liftingvariablename, vectordictionary):
             for k in range(exprSize): 
                 actualVar = lhs.getVar(k)
                 #print(actualVar.Varname)
-                liftedvar = Dmodel.getVarByName(actualVar.Varname+'_'+str(DisjunctionCase))
+                #liftedvar = Dmodel.getVarByName(actualVar.Varname+'_'+str(DisjunctionCase))
+                liftedvar = Dmodel.getVarByName(liftedvariablenames[actualVar.Varname,DisjunctionCase])
                 
                 coefficient = lhs.getCoeff(k)
 
@@ -173,8 +182,8 @@ def lalift(alldata, liftingvariablename, vectordictionary):
                 actualVar2 = Qlhs.getVar2(k)
                 Qcoeff = Qlhs.getCoeff(k)
             
-                var1InQExpr = Dmodel.getVarByName(actualVar1.varname + '_' + str(DisjunctionCase))
-                var2InQExpr = Dmodel.getVarByName(actualVar2.varname + '_' + str(DisjunctionCase))
+                var1InQExpr = Dmodel.getVarByName(liftedvariablenames[actualVar1.varname, DisjunctionCase]) #actualVar1.varname + '_' + str(DisjunctionCase))
+                var2InQExpr = Dmodel.getVarByName(liftedvariablenames[actualVar2.varname, DisjunctionCase]) #actualVar2.varname + '_' + str(DisjunctionCase))
                 Dqexpr += Qcoeff*var1InQExpr*var2InQExpr
 
 
@@ -192,8 +201,8 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     # Now add constraints that effect the disjunction, i.e., for every variable v we write v = v_0 + v_1.
 
     for var in model.getVars():
-        var1 = Dmodel.getVarByName(var.Varname+'_1')
-        var0 = Dmodel.getVarByName(var.Varname+'_0')
+        var1 = Dmodel.getVarByName(liftedvariablenames[var.Varname,1])
+        var0 = Dmodel.getVarByName(liftedvariablenames[var.Varname,0])
         varvar = Dmodel.getVarByName(var.Varname)
         if var.Varname != liftingvariable.Varname:
             Dmodel.addConstr(varvar == var0 + var1, name = 'Dis_'+var.Varname)
