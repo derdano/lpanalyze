@@ -37,8 +37,7 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     # The formulation in the lifted space will have four parts:
     # (a) A copy of the formulation multiplied by z_j and linearized; corresponding to z_j = 1.
     # (b) A copy of the formulation multiplied by 1-z_j and linearized; corresponding to z_j = 0.
-    # (c) A constraint saying that (x,y,z) = (x1, y1, z1) + (x0, y0, z0), where the "_1" or "_0".
-    #     refers to the vector in (a) or (b), respectively.
+    # (c) A constraint saying that (x,y,z) = (x1, y1, z1) + (x0, y0, z0)
     # (d) Have to handle individual variable bounds.
     # (e) Constraints and variables used to model the distance between (x,y,z) and (x*,y*,z*).
 
@@ -107,7 +106,10 @@ def lalift(alldata, liftingvariablename, vectordictionary):
         Dmodel.addVar(obj = 0.0, lb = var.lb, ub = var.ub, name = var.varname)
     for DisjunctionCase in range(2):
         for var in model.getVars():
-            newname = var.varname + '_' + str(DisjunctionCase)
+            if DisjunctionCase == 1:
+                newname = var.varname + "Plambda" #var.varname + '_' + str(DisjunctionCase)
+            else:
+                newname = var.varname + "Nlambda" #var.varname + '_' + str(DisjunctionCase)
 
             if var.varname == liftingvariablename:
                 if DisjunctionCase == 0:
