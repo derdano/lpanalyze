@@ -70,6 +70,7 @@ def read_config(log, filename):
     lpfile = 'NONE'
     solutionfile = None
     linenum = 0
+    ignorevarlindeg = False
 
     MAXCARD = 75
     UB = 125
@@ -94,6 +95,8 @@ def read_config(log, filename):
          ACTION = thisline[1:3]
        elif thisline[0] == 'SOLUTIONFILE':
          solutionfile = thisline[1]
+       elif thisline[0] == 'IGNOREVARLINDEG':
+         ignorevarlindeg = True
        elif thisline[0] == 'END':
          break
        else:
@@ -101,7 +104,7 @@ def read_config(log, filename):
 
      linenum += 1
 
-    for x in [('LPFILE',lpfile), ('MAXCARD',MAXCARD), ('UB', UB), ('VERSION',VERSION), ('ACTION', ACTION), ('SOLUTIONFILE', solutionfile)]:
+    for x in [('LPFILE',lpfile), ('MAXCARD',MAXCARD), ('UB', UB), ('VERSION',VERSION), ('ACTION', ACTION), ('SOLUTIONFILE', solutionfile), ('IGNOREVARLINDEG', ignorevarlindeg)]:
       if x[1] == 'NONE':
         log.stateandquit(' no ' + x[0] + ' input'+'\n')
       alldata[x[0]] = x[1]
@@ -131,16 +134,16 @@ if __name__ == "__main__":
 
 
     if alldata['LPFILE'] != 'NONE':
-        golp(alldata)
+        golp(alldata) # creates the initial LP (by reading the .lp file that has the LP)
 
-        lascan(alldata)
+        lascan(alldata) # checks all the variables and creates some of the variable dictionaries
 
         if alldata['SOLUTIONFILE'] != 'None':
-            vectordictionary = laread_solution(alldata, alldata['SOLUTIONFILE'])
+            VECDIC= laread_solution(alldata, alldata['SOLUTIONFILE'])
 
 
         if alldata['ACTION'][0] == 'Lift_and_Project':
-            lalift(alldata, liftingvariablename = alldata['ACTION'][1], vectordictionary = vectordictionary)
+            lalift(alldata, liftingvariablename = alldata['ACTION'][1], vectordictionary = VECDIC)
         else:
             ladoit(alldata)
 

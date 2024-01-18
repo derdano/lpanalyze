@@ -58,6 +58,7 @@ def lascan(alldata):
 
     code = 0
     varlindeg = alldata['varlindeg']
+    ignorevarlindeg = alldata['IGNOREVARLINDEG']
     varlindeg_bin = {}
     vartype_mine = {}
     varclass = {}
@@ -109,13 +110,15 @@ def lascan(alldata):
         distvarset[distcount] = []
 
         numbilin = 0
+        loud = False
         for j in range(therow.size()):
             v1 = therow.getVar1(j)
             v2 = therow.getVar2(j)
 
-            #print('>>>','v1',v1.varname,'v2',v2.varname)
-            #print(' vld1', v1.varname, varlindeg[v1.varname])
-            #print(' v2type', v2.varname, vartype_mine[v2.varname])
+            if loud:
+                print('>>>','v1',v1.varname,'v2',v2.varname)
+                print(' vld1', v1.varname, varlindeg[v1.varname])
+                print(' v2type', v2.varname, vartype_mine[v2.varname])
             
             coeff = therow.getCoeff(j)
             if v1.varname != v2.varname:
@@ -149,11 +152,19 @@ def lascan(alldata):
                     distvar_partner[distcount] = v2
                     
                 else:
-                    log.joint(Qconstr.QCName+ ' fails bindeg.\n')                
-                    print(v1.varname, varlindeg[v1.varname], v2.varname, varlindeg[v2.varname])
-                    code = 1
-                    simplebreak()                    
-                    break
+                    if ignorevarlindeg == False:
+                        log.joint(Qconstr.QCName+ ' fails bindeg.\n')                
+                        print(v1.varname, varlindeg[v1.varname], v2.varname, varlindeg[v2.varname])
+                        code = 1
+                        simplebreak()                    
+                        break
+                    else:
+                        varlindeg[v1.varname] = 1
+                        varlindeg_bin[v2.varname] = 1
+
+                        distvar_owner[distcount] = v2
+                        distvar_partner[distcount] = v1
+                        
                 varclass[ (distvar_owner[distcount]).varname ] = 'indicator'
                 varclass[ (distvar_partner[distcount]).varname ] = 'distance_sum'
                 varSet[ (distvar_owner[distcount]).varname ] = 'Self' # i.e., none

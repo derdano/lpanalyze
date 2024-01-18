@@ -12,7 +12,6 @@ import time
 
 
 def lalift(alldata, liftingvariablename, vectordictionary): 
-
     # To do: add the iteration count as another argument, so that output refers
     # to that.
     
@@ -98,6 +97,7 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     #    j += 1
     #    target[var.Varname] = j
 
+    Loud = False
 
     target = vectordictionary
     liftedvariablenames = {}
@@ -116,14 +116,16 @@ def lalift(alldata, liftingvariablename, vectordictionary):
                     newname = 'one_minus_'+var.varname
                 else:
                     newname = 'copy_of_'+var.varname
-                print(newname)
+                if Loud:
+                    print(newname)
             liftedvariablenames[var.varname, DisjunctionCase] = newname
             thisub = var.ub
             thislb = var.lb
 
             if varSet[var.varname] == liftingvariable.varname and DisjunctionCase == 0:
                 thislb = thisub = 0
-                print('Setting ', var.varname,' to zero in case', DisjunctionCase)
+                if Loud:
+                    print('Setting ', var.varname,' to zero in case', DisjunctionCase)
                 
             Dmodel.addVar(obj = 0.0, lb = thislb, ub = thisub, name = newname)
 
