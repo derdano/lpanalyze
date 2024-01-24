@@ -14,6 +14,7 @@ from versioner import *
 from lalp import golp
 from ladoit import ladoit, lascan
 from lalift import lalift
+from lacut import *
 
 def laread_solution(alldata, filename):
 
@@ -140,10 +141,11 @@ if __name__ == "__main__":
 
         if alldata['SOLUTIONFILE'] != 'None':
             VECDIC= laread_solution(alldata, alldata['SOLUTIONFILE'])
-
+            alldata['vectordictionary'] = VECDIC
 
         if alldata['ACTION'][0] == 'Lift_and_Project':
-            lalift(alldata, liftingvariablename = alldata['ACTION'][1], vectordictionary = VECDIC)
+            laCuttingPlane(alldata)
+            #lalift(alldata, liftingvariablename = alldata['ACTION'][1], vectordictionary = VECDIC)
         else:
             ladoit(alldata)
 

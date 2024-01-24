@@ -231,64 +231,12 @@ def lalift(alldata, liftingvariablename, vectordictionary):
 
     breakexit('lalifted')
 
+    # To do:
+    # First we need to solve the optimization problem and handle the outcome of the optimization as in mygurobi.py
 
-    # First we need to solve the optimization problem and handle the outcome of the optimization as in mygurobi.py. 
-    # Second, compute the separating cut.  Suppose X* = (x*, y*, z*) is the point to separate (given in vectordictionary), 
-    # and X' = (x', y', z') is the optimal solution to the LP in (x,y,z) space, i.e., ignoring the lifted variables
+    # Second, compute the separating cut.  Suppose X* = (x*, y*, z*) is the point to separate (given in vectordictionary), and
+    # X' = (x', y', z') is the optimal solution to the LP in (x,y,z) space, i.e., ignoring the lifted variables
     # Then we want to compute the hyperplane through X' that is orthogonal to (X* - X').
     # In fact we want to compute the inequality, given by this hyperplane, that cuts off X*.
-    # Finally, we want to return this inequality (something of the form >= ) as well as X', the latter for analysis later on. 
 
-
-    # Optimize the disjunctive model. 
-    Dmodel.optimize()
-
-    # D_solution records the optimal solution. 
-    D_solution = {}
-
-
-    # Use vectordictionary to fetch keys that correspond to variables in the original model. 
-    for v in Dmodel.getVars():
-        if v.varname in vectordictionary: 
-            D_solution[v.varname] = v.x
-
-    '''
-    # The order of the variables will be in (y, z, x). 
-    print(D_solution)
-
-    # Note that vectordictionary will also be printed in order (y, z, x). 
-    print(vectordictionary)
-    '''
-
-    # We now calculate the desired hyperplane in symbols. It goes through X' and is perpendicular to the direction 
-    # of (X' - X*). Therefore, it could be represented as (X - X')^T (X' - X*) = 0. This could be rewritten as 
-    # follows: (X' - X*)^T X >= (X' - X*)^T X' (= cutrhs). 
-
-    log.joint("The new cut is: \n")
-
-    # Calculate X' - X* and store as difference. 
-    difference = {}
-
-    # Calculate (X' - X*)^T X' as cutrhs. 
-    cutrhs = 0
-
-    for key in vectordictionary: 
-        difference[key] = D_solution[key] - vectordictionary[key]
-        cutrhs += difference[key] * D_solution[key]
-        if difference[key] < 0: 
-            log.joint("- " + str(abs(difference[key])) + " " + key + " ")
-        else: 
-            log.joint("+ " + str(difference[key]) + " " + key + " ")
-
-    log.joint(" >= " + str(cutrhs) + "\n")
-
-    expr = LinExpr() #the new constraint
-    for key in vectordictionary: 
-        #difference[key] = D_solution[key] - vectordictionary[key]
-
-        expr += difference[key]*model.getVarByName(key)
-
-    model.addConstr(expr >= cutrhs)
-
-    model.write('Dcut.lp')
-
+    # Finally, we want to return this inequality (something of the form >= ) as well as X', the latter for analysis later on
