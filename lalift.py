@@ -225,11 +225,11 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     Dmodel.setObjective(distance2, GRB.MINIMIZE)
 
     # Optional.  
-    Dmodel.write('D.lp')
+    Dmodel.write('Disjunctive_round'+str(alldata['round_ind'])+'_'+liftingvariablename + '.lp')
     # If we write the LP to a file, the name of the file should include the iteration count, e.g. D_5.lp.
 
 
-    breakexit('lalifted')
+    # breakexit('lalifted')
 
 
     # First we need to solve the optimization problem and handle the outcome of the optimization as in mygurobi.py. 
@@ -240,7 +240,13 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     # Finally, we want to return this inequality (something of the form >= ) as well as X', the latter for analysis later on. 
 
 
+    # Import env. 
+    # env = alldata['env']
+    # env = gp.Env()
+
+    # Tell Gurobi to turn off the output. 
     # Optimize the disjunctive model. 
+    Dmodel.params.OutputFlag=0
     Dmodel.optimize()
 
     # D_solution records the optimal solution. 
@@ -272,13 +278,11 @@ def lalift(alldata, liftingvariablename, vectordictionary):
     # Calculate (X' - X*)^T X' as cutrhs. 
     cutrhs = 0
 
+    actual_value = 0
+
     for key in vectordictionary: 
         difference[key] = D_solution[key] - vectordictionary[key]
         cutrhs += difference[key] * D_solution[key]
-        if difference[key] < 0: 
-            log.joint("- " + str(abs(difference[key])) + " " + key + " ")
-        else: 
-            log.joint("+ " + str(difference[key]) + " " + key + " ")
 
     log.joint(" >= " + str(cutrhs) + "\n")
 
@@ -288,7 +292,13 @@ def lalift(alldata, liftingvariablename, vectordictionary):
 
         expr += difference[key]*model.getVarByName(key)
 
-    model.addConstr(expr >= cutrhs)
+        # Compute the left-hand-side value with X* plugged in. 
+        actual_value += difference[key] * vectordictionary[key]
 
-    model.write('Dcut.lp')
+    diff = 0
+
+    if actual_value < cutrhs: 
+        diff = cutrhs - actual_value
+
+    return expr, cutrhs, diff
 

@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
         lascan(alldata) # checks all the variables and creates some of the variable dictionaries
 
-        if alldata['SOLUTIONFILE'] != 'None':
+        if alldata['SOLUTIONFILE'] != None:
             VECDIC= laread_solution(alldata, alldata['SOLUTIONFILE'])
             alldata['vectordictionary'] = VECDIC
 
